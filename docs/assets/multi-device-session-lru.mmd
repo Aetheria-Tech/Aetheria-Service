@@ -1,0 +1,112 @@
+---
+config:
+  layout: elk
+  theme: base
+  htmlLabels: false
+  themeVariables:
+    fontFamily: "Pretendard,-apple-system,BlinkMacSystemFont,Segoe UI,Malgun Gothic,Apple SD Gothic Neo,sans-serif"
+    fontSize: "14px"
+    background: "#F4F8FA"
+    primaryColor: "#FFFFFF"
+    primaryTextColor: "#16213E"
+    primaryBorderColor: "#065A82"
+    secondaryColor: "#E8F1F5"
+    tertiaryColor: "#F4F8FA"
+    lineColor: "#1C7293"
+    textColor: "#16213E"
+    edgeLabelBackground: "#F4F8FA"
+    clusterBkg: "#F4F8FA"
+    clusterBorder: "#065A82"
+    titleColor: "#16213E"
+    nodeBorder: "#065A82"
+  flowchart:
+    htmlLabels: false
+    curve: basis
+    nodeSpacing: 45
+    rankSpacing: 70
+    padding: 14
+    useMaxWidth: false
+    wrappingWidth: 360
+---
+
+%% 다중 기기 세션 관리(LRU 자동 만료) — 포트폴리오용 SVG의 원본.
+
+%% 출처는 save_token.lua · rotate_token.lua · RefreshTokenSessionAdapter.java ·
+%% TokenRedisKeys.java · application.yml(redis.auth.max-token) 입니다.
+%% 키 모양은 설정값(prefix=user, suffix=rt, session.suffix=session)을 그대로 반영했습니다.
+%% 그림의 사용자 식별자 7과 기기 이름은 설명을 위한 예시이고, 나머지 값(최대 3기기, 60일)은
+%% 실제 설정값입니다.
+
+%% 읽는 법
+%%   초록 굵은 화살표 — 한도를 넘겼을 때만 도는 축출 경로
+%%   실선            — 항상 도는 경로
+%%   점선            — 상태(Redis 자료구조)에 대한 참조
+
+%% 색 (라이트 배경 전용)
+%%   배경 #F4F8FA · 주 #065A82 · 보조 #1C7293 · 강조 #02C39A · 글자 #16213E
+
+%% 렌더는 mermaid-cli(11.x). 레이아웃 엔진과 테마를 프런트매터에 박아 두었으므로 설정 파일 없이
+%% `mmdc -i multi-device-session-lru.mmd -o multi-device-session-lru-light.svg -b transparent` 로
+%% 같은 그림이 나옵니다. 그 뒤 후처리로 넣은 것
+%%   - 루트에 xml:space="preserve" (PowerPoint·LibreOffice 에서 영문 단어 사이 공백 유지)
+%%   - 라벨 뒤 배경을 불투명 #F4F8FA 로 (선이 글자를 관통하지 않게)
+%%   - viewBox 를 가로·세로 25% 넓혀 사방 여백 확보 (글자 잘림 방지)
+%%   - 배경을 CSS 가 아닌 실제 rect 로, 굵은 화살표의 화살촉을 강조색 사본 마커로
+
+flowchart TB
+    subgraph REQ["요청 경로"]
+        R1["로그인 GET /api/v1/auth/callback/{provider}<br/>재발급 POST /api/v1/auth/reissue"]
+        R2["AuthController · @ExtractDeviceId<br/>deviceId = X-Device-Id 헤더, 없으면 User-Agent 의 SHA-256"]
+        R3["LoginService · ReissueService<br/>→ AuthSessionManager.saveSession · rotateSession"]
+        R5["RefreshTokenSessionAdapter<br/>키 조립은 TokenRedisKeys 한 곳에서"]
+        R1 --> R2 --> R3 --> R5
+    end
+
+    subgraph LUA["EVAL save_token.lua · rotate_token.lua — 여기부터 원자적, 다른 명령이 끼어들 수 없다"]
+        L1["① 기기 토큰 저장<br/>SET user:7:rt:pc-D PX 60일"]
+        L2["② 세션 인덱스 갱신<br/>ZADD user:7:session now pc-D<br/>PEXPIRE user:7:session 60일"]
+        L3{"③ ZCARD user:7:session<br/>&gt; max-token(3) ?"}
+        L4["④ removeCount = count - max<br/>ZRANGE user:7:session 0 removeCount-1<br/>→ 가장 오래된 기기"]
+        L5["⑤ DEL user:7:rt:phone-A<br/>토큰 키 자체를 지운다"]
+        L6["⑥ ZREMRANGEBYRANK user:7:session 0 removeCount-1<br/>인덱스에서도 지운다"]
+        OK["새 Refresh Token 쿠키 반환<br/>HttpOnly · Secure · SameSite=Lax"]
+        L1 --> L2 --> L3
+        L3 -->|"아니오 — 한도 이내"| OK
+        L3 ==>|"예 — 4 &gt; 3"| L4
+        L4 ==> L5
+        L5 ==> L6
+        L6 ==> OK
+    end
+
+    subgraph STATE["Redis 상태 · userId 7"]
+        Z1["ZSET user:7:session — pc-D 로그인 직후<br/>score = 저장·회전 시각(ms)<br/><br/>phone-A  09-01 09:12  ← 가장 오래됨<br/>mac-B    09-03 21:40<br/>ipad-C   09-07 08:05<br/>pc-D     09-08 19:33  ← 방금"]
+        T1["String 키 4개 · 기기마다 독립 TTL<br/><br/>user:7:rt:phone-A<br/>user:7:rt:mac-B<br/>user:7:rt:ipad-C<br/>user:7:rt:pc-D"]
+        Z2["축출 후 — ZSET 3개 · String 키 3개<br/><br/>mac-B · ipad-C · pc-D<br/>phone-A 는 인덱스와 토큰이 함께 사라진다"]
+        Z1 -.- T1
+        Z1 ==>|"⑤⑥ 실행 후"| Z2
+    end
+
+    NOTE["재발급도 같은 축출 블록을 돈다.<br/>회전 때 score 가 현재 시각으로 갱신되므로<br/>'가장 오래 쓰지 않은' 기기가 앞으로 밀린다."]
+    LIMIT["한도 · 수명<br/>redis.auth.max-token = 3<br/>Refresh Token 60일 · Access Token 15분<br/>세션 인덱스도 저장·회전마다 60일로 연장"]
+
+    R5 ==>|"EVAL"| L1
+    L2 -.->|"이 시점의 상태"| Z1
+    L4 -.->|"ZRANGE 0 0 → phone-A"| Z1
+    L3 -.- LIMIT
+    OK -.- NOTE
+
+    classDef flowNode fill:#FFFFFF,stroke:#1C7293,stroke-width:1.4px,color:#16213E
+    classDef luaNode fill:#FFFFFF,stroke:#065A82,stroke-width:1.4px,color:#16213E
+    classDef stateNode fill:#FFFFFF,stroke:#065A82,stroke-width:1.4px,color:#16213E
+    classDef evictNode fill:#FFFFFF,stroke:#02C39A,stroke-width:2px,color:#16213E
+    classDef noteNode fill:#F4F8FA,stroke:#8AA3B0,stroke-width:1.2px,stroke-dasharray:5 4,color:#16213E
+
+    class R1,R2,R3,R5 flowNode
+    class L1,L2,L3,OK luaNode
+    class L4,L5,L6,Z2 evictNode
+    class Z1,T1 stateNode
+    class NOTE,LIMIT noteNode
+
+    style REQ fill:#E8F1F5,stroke:#1C7293,stroke-width:1.2px,color:#16213E
+    style LUA fill:#DFEAF2,stroke:#065A82,stroke-width:2px,color:#16213E
+    style STATE fill:#F4F8FA,stroke:#065A82,stroke-width:1.4px,color:#16213E

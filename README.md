@@ -4,7 +4,8 @@
 
 ![Java](https://img.shields.io/badge/Java-17-007396?logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.8-6DB33F?logo=springboot&logoColor=white)
-![WebFlux](https://img.shields.io/badge/Spring%20WebFlux-Reactor-6DB33F?logo=spring&logoColor=white)
+![Spring MVC](https://img.shields.io/badge/Spring%20MVC-Tomcat-6DB33F?logo=spring&logoColor=white)
+![Reactor](https://img.shields.io/badge/Project%20Reactor-WebClient-6DB33F?logo=reactivex&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.x-4479A1?logo=mysql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-Lettuce-DC382D?logo=redis&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-S3%20%7C%20SageMaker%20%7C%20SQS-232F3E?logo=amazonwebservices&logoColor=white)
@@ -43,7 +44,7 @@
 | 분류 | 사용 기술 |
 | --- | --- |
 | **Language / Runtime** | Java 17 |
-| **Framework** | Spring Boot 3.5.8, Spring MVC, **Spring WebFlux (Reactor)** |
+| **Framework** | Spring Boot 3.5.8, **Spring MVC (서블릿 스택 · 내장 Tomcat)** + **Project Reactor / `WebClient`** — 외부 API 대기 구간만 논블로킹으로 처리하는 Semi-Reactive 구성 ([설명](docs/architecture/servlet-and-reactor.md)) |
 | **Persistence** | Spring Data JPA, Hibernate, **Querydsl 5.0.0 (Jakarta)**, MySQL 8, **Flyway** (스키마 마이그레이션) |
 | **Cache / In-Memory** | Redis (Lettuce), **Lua Script**, Redis GEO, Redis Pub/Sub, Caffeine |
 | **Auth / Security** | Spring Security, OAuth2 Client (Kakao·Google), **JWT (jjwt 0.11.5)**, AES-GCM 필드 암호화 |
@@ -66,7 +67,7 @@ flowchart TB
     subgraph IN["Inbound Adapter"]
         C["REST Controller · JWT Filter"]
         SQS["SQS Listener"]
-        SCH["Scheduler"]
+        SCH["Scheduler · Event Listener"]
     end
 
     subgraph APP["Application Layer"]
@@ -81,7 +82,7 @@ flowchart TB
 
     subgraph OUT["Outbound Adapter"]
         DB["JPA · Querydsl → MySQL"]
-        RD["Redis — Token · RateLimit · GEO"]
+        RD["Redis — Token · RateLimit · GEO · Pub/Sub"]
         EX["External API — Kakao · Google"]
         AWS["AWS — S3 · SageMaker"]
         NOTI["SSE · Discord"]
@@ -90,19 +91,21 @@ flowchart TB
     C --> PI
     SQS --> PI
     SCH --> PI
-    PI -. 구현 .-> SVC
+    PI <-.-|구현| SVC
     SVC --> PO
-    PO -. 구현 .-> DB
-    PO -. 구현 .-> RD
-    PO -. 구현 .-> EX
-    PO -. 구현 .-> AWS
-    PO -. 구현 .-> NOTI
+    PO <-.-|구현| DB
+    PO <-.-|구현| RD
+    PO <-.-|구현| EX
+    PO <-.-|구현| AWS
+    PO <-.-|구현| NOTI
 
     SVC --> M
-    DB --> M
+    M <---|매핑| DB
 ```
 
 > 의존 방향은 항상 **바깥 → 안쪽**입니다. 어댑터를 교체해도 `application`·`domain`은 수정되지 않습니다.
+> 점선은 **구현 관계**이며 화살촉이 인터페이스를 가리킵니다 — 서비스가 `Port In`을, 어댑터가 `Port Out`을 구현합니다.
+> 이 방향은 그림에만 있는 약속이 아니라 [`LayerDependencyTest`](src/test/java/com/serverbe/architecture/LayerDependencyTest.java)가 테스트로 강제합니다.
 
 ### AI 생성 파이프라인 시퀀스
 
@@ -161,17 +164,25 @@ sequenceDiagram
 아래는 각 문제의 요약입니다. **실제 코드 인용, 검토했다 기각한 대안, 재현·검증 방법**은
 [`docs/troubleshooting/`](docs/troubleshooting/)에 항목별 문서로 정리해 두었습니다.
 
-### 1. WebFlux 이벤트 루프 블로킹 — 전 구간 스레드 격리
+여기에 숫자가 등장하는 항목(1번의 스레드 점유, 3번의 정합성)은 **주장만으로 두지 않고 따로
+측정했습니다.** 어떤 도구로 어떤 조건에서 쟀는지, 그리고 그 측정이 말하지 않는 것이 무엇인지는
+[`docs/benchmark/`](docs/benchmark/)에 있습니다.
 
-**문제** · AI 파이프라인은 외부 API 대기 시간이 길어 WebFlux로 구현했지만, 그 안에서 호출하는 JPA·Redis·AWS SDK v2 동기 클라이언트는 전부 **블로킹 I/O**입니다.
+### 1. Reactor 이벤트 루프 블로킹 — 전 구간 스레드 격리
 
-**원인** · Netty 이벤트 루프 스레드는 CPU 코어 수만큼만 존재합니다. 이 스레드가 DB 응답을 기다리며 멈추면 **서버 전체의 모든 요청 처리가 함께 멈춥니다.**
+**전제** · 이 서버는 **Tomcat(서블릿 스택) 하나만 띄웁니다.** WebFlux는 `WebClient`와 Reactor 타입을 쓰기 위한 의존성이고, Netty는 **아웃바운드 HTTP 클라이언트**로만 돕니다. 컨트롤러가 `Mono`를 반환하는 것은 Spring MVC가 리액티브 반환 타입을 **비동기 서블릿**으로 어댑팅해 주기 때문입니다. (→ [서블릿 스택 위의 Reactor](docs/architecture/servlet-and-reactor.md))
+
+**문제** · AI 파이프라인은 외부 API 대기가 길어 리액티브 체인으로 구현했지만, 그 체인 안에서 호출하는 JPA·Redis·AWS SDK v2 동기 클라이언트는 전부 **블로킹 I/O**입니다.
+
+**원인** · Reactor Netty 이벤트 루프 스레드(`reactor-http-nio-*`)는 CPU 코어 수만큼만 존재하고, 애플리케이션의 **모든 `WebClient`가 이 그룹을 공유**합니다. 이 스레드가 DB 응답을 기다리며 멈추면 **아웃바운드 외부 API 호출이 전부 함께 멈춥니다** — AI와 무관한 소셜 로그인이 느려지고, 상대 서버는 멀쩡한데 우리 쪽 서킷이 열립니다.
 
 **해결** · 파이프라인 내 모든 블로킹 구간을 `Mono.fromCallable(...).subscribeOn(Schedulers.boundedElastic())`으로 감싸 전용 스레드 풀로 격리했습니다. Rate Limit 검증, PENDING 저장, S3 업로드, SageMaker 호출, 상태 갱신, 에러 기록 — 예외 없이 전부 적용했습니다.
 
 > 근거 · [`AiGenerationService.java`](src/main/java/com/serverbe/application/service/AiGenerationService.java)
 >
-> 자세히 · [리액티브 파이프라인의 블로킹 I/O — 전 구간 스레드 격리](docs/troubleshooting/01-webflux-blocking-io.md)
+> 자세히 · [리액티브 파이프라인의 블로킹 I/O — 전 구간 스레드 격리](docs/troubleshooting/01-reactive-blocking-io.md)
+>
+> 측정 · [스레드 점유 — 동기 대비 톰캣 워커를 얼마나 덜 잡는가](docs/benchmark/01-thread-occupancy.md) — JMeter 5.6.3 · 외부 지연 500ms · 동시 100 요청에서 **톰캣 워커 점유 p95가 101 → 2** (사용률 50.5% → 1.0%). 세 경로의 처리량(165.8 TPS)과 응답 시간(503ms), 오류율(0%)은 동일
 
 ---
 
@@ -204,6 +215,8 @@ sequenceDiagram
 > 근거 · [`AiNotificationService.java`](src/main/java/com/serverbe/application/service/AiNotificationService.java) · [`AiNotificationSqsListener.java`](src/main/java/com/serverbe/adapter/in/messaging/AiNotificationSqsListener.java)
 >
 > 자세히 · [SQS 콜백 경합 조건 — 비관적 락과 재시도 유도](docs/troubleshooting/03-sqs-callback-race-condition.md)
+>
+> 측정 · [SQS 멱등성 정합성 — 중복 100건을 흘렸을 때 몇 건이 남는가](docs/benchmark/02-sqs-idempotency-consistency.md) — Testcontainers 로 띄운 실제 MySQL·LocalStack SQS 위에서 **중복 100건 전달 → 러닝아트 정확히 20건**, 유실 0, 오탐 0
 
 ---
 
@@ -254,6 +267,7 @@ sequenceDiagram
 > 근거 · [`rotate_token.lua`](src/main/resources/scripts/rotate_token.lua), [`global_logout.lua`](src/main/resources/scripts/global_logout.lua), [`RefreshTokenSessionAdapter.java`](src/main/java/com/serverbe/adapter/out/persistence/token/RefreshTokenSessionAdapter.java)
 >
 > 자세히 · [Refresh Token Rotation — 원자적 회전과 기기별 세션](docs/troubleshooting/06-refresh-token-rotation.md)
+> · [다중 기기 세션 관리 — ZSet 인덱스와 LRU 자동 만료](docs/troubleshooting/14-multi-device-session-lru.md)
 
 ---
 
@@ -521,6 +535,9 @@ src/main/resources/db/migration  # Flyway 마이그레이션 (V1 베이스라인
                                  #                    → V4 스윕 인덱스 → V5 ENUM·키 정규화)
 
 docs/troubleshooting/            # 트러블슈팅 상세 기록 (항목별 문서 + 인덱스)
+docs/benchmark/                  # 성능·정합성 측정 기록 (지표 정의 · 도구 · 조건 · 한계)
+perf/                            # 측정 하네스 (JMeter 플랜 · WireMock 스텁 · 실행 스크립트)
+docker-compose.bench.yml         # 스레드 점유 측정용 오버레이 (WireMock 스텁 + bench 프로파일)
 infra/                           # AWS CDK (TypeScript) — VPC·RDS·Redis·ECS Fargate·ALB·비동기 파이프라인
 Dockerfile                       # 멀티스테이지 빌드 (레이어드 jar)
 docker-compose.yml               # 로컬 스택 — MySQL 8.0 · Redis 7 · 위 Dockerfile 로 빌드한 앱
@@ -664,6 +681,7 @@ POST /api/v1/test/ai/tasks/{taskId}/mock-sqs-receive
 | **외부 연동 테스트** | OkHttp `MockWebServer`로 Kakao·Google OAuth와 지오코딩 API의 정상 응답, 4xx, 5xx, 타임아웃 시나리오를 재현 |
 | **동시성 테스트** | `RateLimiterServiceConcurrencyTest` — 다중 스레드가 동시에 요청할 때 Lua 토큰 버킷이 한도를 초과 허용하지 않는지 검증 |
 | **성능 측정** | `BlacklistPerformanceTest`, `WebClientPerformanceTest` — 토큰 블랙리스트 조회 및 WebClient 커넥션 풀 동작 특성 측정 |
+| **정합성 측정** | `SqsIdempotencyConsistencyTest` — Testcontainers로 띄운 실제 MySQL·LocalStack SQS 위에서 **같은 알림을 5번씩 중복 전달**하고, 큐가 빌 때까지 기다린 뒤 등록 건수를 센다. Mockito 스텁으로는 `SELECT ... FOR UPDATE`의 직렬화도 at-least-once 재전달도 잴 수 없어 따로 분리 ([측정 조건](docs/benchmark/02-sqs-idempotency-consistency.md)) |
 | **인프라 테스트** | 서킷 브레이커 상태 전이 이벤트, AES-GCM 암복호화와 키 버전 마이그레이션, `@RateLimit` AOP 적용, S3 Lifecycle 정책 등록 |
 
 ---

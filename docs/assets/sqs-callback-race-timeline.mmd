@@ -1,0 +1,92 @@
+%% SQS 콜백 경합 조건 — Before/After 타임라인. 포트폴리오용 SVG의 원본.
+%%
+%% 배경 이야기는 docs/troubleshooting/03-sqs-callback-race-condition.md 에 있습니다.
+%% 요지는 요청 스레드와 SQS 리스너 스레드가 같은 AiTask 레코드에 순서 보장 없이
+%% 접근한다는 것이고, 이 그림은 그 순서가 어긋나는 지점만 떼어 그린 것입니다.
+%%
+%% 읽는 법
+%%   붉은 점선  — "추론 완료" 콜백. 경합의 원인이 되는 지점입니다.
+%%   초록 점선  — 5분 대기 중에 PROCESSING 저장이 끝나 재시도가 성공하는 경로.
+%%   보이지 않는 링크(~~~) — 콜백 도착이 PROCESSING 저장보다 앞선다는 시간 순서만
+%%                          고정합니다. 선을 그리지 않습니다.
+%%
+%% 색 (라이트 배경 전용)
+%%   배경 #F4F8FA · 주 #065A82 · 보조 #1C7293 · 성공 #02C39A · 실패 #B8564B · 글자 #16213E
+%%
+%% 렌더 후 후처리로 넣은 것
+%%   - 루트에 xml:space="preserve"
+%%   - 라벨 뒤 배경 rect 를 불투명 #F4F8FA 로 (선이 글자를 관통하지 않게)
+%%   - viewBox 를 가로·세로 25% 넓혀 사방 여백 확보 (외부 변환기에서 글자 잘림 방지)
+%%   - 배경을 CSS 가 아닌 실제 rect 로 (PowerPoint·LibreOffice 대비)
+
+%% 선언 순서는 렌더 결과의 역순입니다. mermaid 가 끊어진 컴포넌트를 역순으로 쌓기
+%% 때문에, 화면 위에 오길 바라는 블록(Before)을 나중에 선언합니다. 레인도 같습니다.
+flowchart LR
+    subgraph AFTER["After — PENDING이면 예외를 던져 재시도로 넘긴다"]
+        direction LR
+        subgraph ASQS["SQS 리스너 스레드"]
+            direction LR
+            AS1("③ 콜백 도착<br/>추론이 너무 빠름")
+            AS2("④ 상태 조회<br/>= PENDING")
+            AS3("⑥ 예외 throw<br/>ack 하지 않음")
+            AS4("⑦ 가시성 타임아웃<br/>5분 대기")
+            AS5("⑧ 재시도 · 상태 조회<br/>= PROCESSING")
+            AS6("✅ 정상 처리<br/>러닝 아트 저장")
+            AS1 --> AS2 --> AS3 --> AS4 --> AS5 --> AS6
+        end
+        subgraph AREQ["요청 스레드"]
+            direction LR
+            AR1("① 추론 요청<br/>PENDING 저장")
+            AR2("② SageMaker<br/>비동기 호출")
+            AR3("⑤ PROCESSING<br/>저장 완료")
+            AR1 --> AR2 --> AR3
+        end
+        AR2 -.->|"추론 완료"| AS1
+        AS1 ~~~ AR3
+        AR3 -.->|"대기 중 저장 완료"| AS5
+    end
+
+    subgraph BEFORE["Before — 콜백이 PROCESSING 저장을 앞지른다"]
+        direction LR
+        subgraph BSQS["SQS 리스너 스레드"]
+            direction LR
+            BS1("③ 콜백 도착<br/>추론이 너무 빠름")
+            BS2("④ 상태 조회<br/>= PENDING")
+            BS3("❌ 실패 오판<br/>정상 작업이 죽음")
+            BS1 --> BS2 --> BS3
+        end
+        subgraph BREQ["요청 스레드"]
+            direction LR
+            BR1("① 추론 요청<br/>PENDING 저장")
+            BR2("② SageMaker<br/>비동기 호출")
+            BR3("⑤ PROCESSING<br/>저장 — 이미 늦음")
+            BR1 --> BR2 --> BR3
+        end
+        BR2 -.->|"추론 완료"| BS1
+        BS1 ~~~ BR3
+    end
+
+    classDef reqNode fill:#FFFFFF,stroke:#065A82,stroke-width:1.6px,color:#16213E
+    classDef sqsNode fill:#FFFFFF,stroke:#1C7293,stroke-width:1.6px,color:#16213E
+    classDef badNode fill:#F7E7E4,stroke:#B8564B,stroke-width:2.4px,color:#16213E
+    classDef goodNode fill:#DEF6EF,stroke:#02C39A,stroke-width:2.4px,color:#16213E
+
+    class BR1,BR2,AR1,AR2,AR3 reqNode
+    class BS2,AS2,AS3,AS4 sqsNode
+    class BR3,BS1,BS3,AS1 badNode
+    class AS5,AS6 goodNode
+
+    style BEFORE fill:#FBEDEB,stroke:#B8564B,stroke-width:2px,color:#16213E
+    style AFTER fill:#E4F6F1,stroke:#02C39A,stroke-width:2px,color:#16213E
+    style BREQ fill:#E9F0F5,stroke:#065A82,stroke-width:1.2px,color:#16213E
+    style BSQS fill:#E9F0F5,stroke:#1C7293,stroke-width:1.2px,color:#16213E
+    style AREQ fill:#E9F0F5,stroke:#065A82,stroke-width:1.2px,color:#16213E
+    style ASQS fill:#E9F0F5,stroke:#1C7293,stroke-width:1.2px,color:#16213E
+
+    %% 선언 순서로 매겨지는 인덱스입니다.
+    %%   7 · 14 — "추론 완료" 콜백. 경합의 원인이므로 붉게.
+    %%   9      — 5분 대기 중에 PROCESSING 저장이 끝나 재시도가 성공하는 경로.
+    %%   8 · 15 — 시간 순서만 고정하는 보이지 않는 링크라 손대지 않습니다.
+    linkStyle 7 stroke:#B8564B,stroke-width:2.2px
+    linkStyle 14 stroke:#B8564B,stroke-width:2.2px
+    linkStyle 9 stroke:#02C39A,stroke-width:2.2px

@@ -11,11 +11,12 @@ README는 훑는 문서입니다. 여기는 **파고드는 문서**로, README�
 
 여기는 **무엇이 잘못됐고 왜 그렇게 고쳤는가**를 다룹니다. 장애가 아니라 **지금 어떻게 동작하는가**를
 찾고 있다면 [`../architecture/`](../architecture/), 아직 **고치지 않은 것과 고치지 않기로 한 것**을
-찾고 있다면 [`../refactor/`](../refactor/) 쪽입니다.
+찾고 있다면 [`../refactor/`](../refactor/), 고친 뒤 **정말 효과가 있었는지 재 본 기록**을 찾고 있다면
+[`../benchmark/`](../benchmark/) 쪽입니다. 01번과 03번에는 각각 측정 문서가 따로 붙어 있습니다.
 
 | # | 제목 | 한 줄 요약 |
 | --- | --- | --- |
-| 01 | [리액티브 파이프라인의 블로킹 I/O](01-webflux-blocking-io.md) | 이벤트 루프에서 JDBC를 기다리면 **모든 아웃바운드 외부 API 호출**이 함께 멈춘다 |
+| 01 | [리액티브 파이프라인의 블로킹 I/O](01-reactive-blocking-io.md) | 이벤트 루프에서 JDBC를 기다리면 **모든 아웃바운드 외부 API 호출**이 함께 멈춘다 |
 | 02 | [S3 고아 파일 — Saga 보상 트랜잭션](02-s3-orphan-saga-compensation.md) | 실패 지점이 둘이고, 보상은 **원본 예외를 가리지 않아야** 한다 |
 | 03 | [SQS 콜백 경합 조건](03-sqs-callback-race-condition.md) | 비관적 락으로 직렬화하고, `PENDING`이면 예외로 **SQS 재시도를 유도**한다 |
 | 04 | [스케줄러 중복 실행 — ShedLock](04-scheduler-duplicate-shedlock.md) | `lockAtLeastFor`는 시계 오차를, `lockAtMostFor`는 데드락을 막는다 (방향이 반대) |
@@ -28,6 +29,7 @@ README는 훑는 문서입니다. 여기는 **파고드는 문서**로, README�
 | 11 | [설계 기록](11-design-notes.md) | 하나의 장애로 떨어지지는 않지만 남겨 둘 판단들 |
 | 12 | [메시지 브로커 선택 — 왜 Kafka가 아닌가](12-why-not-kafka.md) | 발행자가 SNS라 브로커 교체는 브릿지 추가다. **replay는 브로커가 아니라 원본 보존이 결정한다** |
 | 13 | [러닝 아트 조회 인덱스](13-running-art-query-indexes.md) | 정렬이 인덱스 밖에 있어 20건에 35,380건을 만졌다. 커버링 인덱스가 훑는 양을 **562MB에서 18MB로** 줄인다 |
+| 14 | [다중 기기 세션 관리 — LRU 자동 만료](14-multi-device-session-lru.md) | ZSet의 score가 곧 LRU 순서다. 축출은 **인덱스와 토큰 키를 함께** 지워야 반쪽이 되지 않는다 |
 
 ## 관통하는 규칙 몇 가지
 

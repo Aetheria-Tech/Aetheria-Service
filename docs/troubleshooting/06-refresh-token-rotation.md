@@ -12,8 +12,8 @@ Redis에는 두 가지 구조로 저장합니다.
 
 | 구조 | 키 | 용도 |
 | --- | --- | --- |
-| String | `auth:{userId}:rt:{deviceId}` | 기기별 리프레시 토큰. **기기마다 독립 TTL** |
-| ZSet | `auth:sessions:{userId}` | 로그인 시각 기준 정렬된 기기 인덱스. 최대 기기 수 관리 |
+| String | `user:{userId}:rt:{deviceId}` | 기기별 리프레시 토큰. **기기마다 독립 TTL** |
+| ZSet | `user:session:{userId}` | 로그인 시각 기준 정렬된 기기 인덱스. 최대 기기 수 관리 |
 
 기기별로 String 키를 나눈 이유는 **TTL이 기기마다 달라야 하기 때문**입니다. 해시 하나에 모아 두면
 필드별 TTL을 줄 수 없어, 한 기기의 만료가 다른 기기에 영향을 줍니다.
@@ -111,8 +111,11 @@ if count > max then
 end
 ```
 
-ZSet의 score를 로그인 시각으로 두었으므로 `ZRANGE 0 N`이 곧 **가장 오래된 기기**입니다.
+ZSet의 score를 저장·회전 시각으로 두었으므로 `ZRANGE 0 N`이 곧 **가장 오래 쓰지 않은 기기**입니다.
 `removeCount`를 `count - max`로 계산해 **여러 개가 한꺼번에 초과된 경우도** 처리합니다.
+
+이 축출은 회전뿐 아니라 최초 로그인(`save_token.lua`)에서도 같은 블록으로 일어납니다. LRU 순서가
+정해지는 방식과 축출이 부르는 부작용은 [14. 다중 기기 세션 관리](14-multi-device-session-lru.md)에 따로 정리했습니다.
 
 축출 시 ZSet에서 지우는 것만으로는 부족합니다. **실제 토큰 키를 `DEL` 하지 않으면 인덱스에서만
 사라지고 토큰은 계속 유효**합니다. 그래서 인덱스 정리(`ZREMRANGEBYRANK`)와 키 삭제(`DEL`)를 함께 합니다.
@@ -179,8 +182,8 @@ Redis가 죽었을 때 **모든 인증을 실패시키면 전면 장애**가 됩
   한도 이내인지 확인합니다. **둘 중 하나만 줄었다면 축출 로직이 반쪽입니다.**
 
   ```bash
-  docker compose exec redis redis-cli ZRANGE "auth:sessions:1" 0 -1 WITHSCORES
-  docker compose exec redis redis-cli --scan --pattern 'auth:1:rt:*'
+  docker compose exec redis redis-cli ZRANGE "user:session:7" 0 -1 WITHSCORES
+  docker compose exec redis redis-cli --scan --pattern 'user:7:rt:*'
   ```
 - **구 토큰 무효화** — 회전 후 구 토큰으로 다시 재발급을 시도하면 거부되어야 합니다.
 - **블랙리스트 성능** — [`BlacklistPerformanceTest.java`](../../src/test/java/com/serverbe/BlacklistPerformanceTest.java)

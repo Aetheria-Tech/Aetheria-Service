@@ -1,0 +1,95 @@
+---
+config:
+  theme: base
+  htmlLabels: false
+  themeVariables:
+    fontFamily: "Pretendard,-apple-system,BlinkMacSystemFont,Segoe UI,Malgun Gothic,Apple SD Gothic Neo,sans-serif"
+    fontSize: "14px"
+    background: "#F4F8FA"
+    primaryColor: "#FFFFFF"
+    primaryTextColor: "#16213E"
+    primaryBorderColor: "#065A82"
+    secondaryColor: "#E8F1F5"
+    tertiaryColor: "#F4F8FA"
+    lineColor: "#1C7293"
+    textColor: "#16213E"
+    actorBkg: "#FFFFFF"
+    actorBorder: "#065A82"
+    actorTextColor: "#16213E"
+    actorLineColor: "#1C7293"
+    signalColor: "#1C7293"
+    signalTextColor: "#16213E"
+    labelBoxBkgColor: "#E8F1F5"
+    labelBoxBorderColor: "#065A82"
+    labelTextColor: "#16213E"
+    noteBkgColor: "#E8F1F5"
+    noteBorderColor: "#02C39A"
+    noteTextColor: "#16213E"
+    sequenceNumberColor: "#FFFFFF"
+    activationBkgColor: "#E8F1F5"
+    activationBorderColor: "#065A82"
+  sequence:
+    useMaxWidth: false
+    diagramMarginX: 40
+    diagramMarginY: 24
+    actorMargin: 70
+    boxMargin: 12
+    messageFontSize: 14
+    noteFontSize: 13
+    wrap: false
+---
+
+%% 서블릿 스택 위의 Reactor — AI 생성 요청 한 건이 건너가는 스레드. 포트폴리오용 SVG의 원본.
+
+%% 출처는 AiGenerationController.initiateGeneration · AiGenerationService.initiateGeneration ·
+%% KakaoGeocodeAdapter.geocode · SageMakerAsyncAdapter.invokeAsync · WebClientConfig 입니다.
+%% 스레드 이름은 실제 런타임 이름 그대로입니다 — 톰캣은 http-nio-8080-exec-N, Reactor Netty
+%% 이벤트 루프는 reactor-http-nio-N, 블로킹 격리 풀은 boundedElastic-N.
+
+%% 이 그림이 말하려는 것 하나
+%%   인바운드 HTTP 를 받는 스레드는 Tomcat 이고, Netty 이벤트 루프는 아웃바운드 WebClient
+%%   구간에서만 등장한다. Netty 는 서버로 뜨지 않는다.
+
+%% 읽는 법
+%%   세로줄 하나 = 스레드 하나 (오른쪽 둘은 스레드가 아니라 외부 시스템)
+%%   Note       — 그 스레드에서 일어나는 일 중 설명이 필요한 것
+%%   번호       — 시간 순서
+
+%% 색 (라이트 배경 전용)
+%%   배경 #F4F8FA · 주 #065A82 · 보조 #1C7293 · 강조 #02C39A · 글자 #16213E
+
+%% 렌더는 mermaid-cli(11.x). 테마를 프런트매터에 박아 두었으므로 설정 파일 없이
+%% `mmdc -i servlet-and-reactor-threads.mmd -o servlet-and-reactor-threads-light.svg -b transparent` 로
+%% 같은 그림이 나옵니다. 그 뒤 후처리로 넣은 것
+%%   - 루트에 xml:space="preserve" (PowerPoint·LibreOffice 에서 영문 단어 사이 공백 유지)
+%%   - 라벨 뒤 배경을 불투명 #F4F8FA 로 (선이 글자를 관통하지 않게)
+%%   - viewBox 를 가로·세로 25% 넓혀 사방 여백 확보 (글자 잘림 방지)
+%%   - 배경을 CSS 가 아닌 실제 rect 로
+
+sequenceDiagram
+    autonumber
+    participant C as 클라이언트
+    participant T as Tomcat 워커<br/>http-nio-8080-exec-N<br/>(인바운드 · 최대 200)
+    participant B as 블로킹 격리 풀<br/>boundedElastic-N<br/>(코어 수 x 10)
+    participant N as Reactor Netty 이벤트 루프<br/>reactor-http-nio-N<br/>(아웃바운드 · 코어 수)
+    participant K as Kakao Geocode API
+    participant AWS as AWS S3 · SageMaker
+
+    C->>T: POST /api/v1/running-arts/tasks
+    T->>T: 서블릿 필터 · JWT 인증 · 인자 바인딩
+    T->>T: 핸들러가 Mono 반환 → request.startAsync()
+    Note over T: 워커 스레드를 여기서 반납한다.<br/>외부를 기다리는 동안 톰캣은 비어 있다.
+    T-->>B: 컨트롤러의 subscribeOn(boundedElastic) 으로 구독 시작
+    B->>B: Redis 연타 방지 락 · JPA 진행중 작업 확인 (블로킹)
+    B->>N: geocodePort.geocode — WebClient 발행
+    N->>K: 지오코딩 HTTP 요청
+    K-->>N: 응답
+    Note over N: 이 루프는 애플리케이션의 모든 WebClient 가 공유한다.<br/>여기서 블로킹하면 카카오·구글 OAuth 와 Discord 까지 함께 멈춘다.
+    N-->>B: 이후 단계마다 subscribeOn 으로 되돌린다
+    B->>B: PENDING INSERT (JPA)
+    B->>AWS: 프롬프트 JSON S3 업로드 → SageMaker 비동기 추론 호출
+    Note over AWS: SDK 클라이언트는 동기(블로킹)다.<br/>"Async" 는 SageMaker 엔드포인트 모드를 뜻한다.
+    AWS-->>B: 예상 Output S3 URI
+    B->>B: PROCESSING UPDATE (TransactionTemplate)
+    B-->>T: Mono 완료 → 컨테이너 재디스패치
+    T-->>C: 201 Created + taskId
