@@ -1,0 +1,66 @@
+language: "ko-KR"
+
+reviews:
+  profile: "chill"                 # chill(가벼운 피드백) / assertive(꼼꼼하지만 잔소리 많음)
+  request_changes_workflow: false  # true면 이슈 발견 시 PR을 "Request changes" 상태로 표시
+  high_level_summary: true         # PR 상단에 변경 요약 자동 생성
+  poem: false                      # PR마다 귀여운 시 생성 - 실무에서는 꺼두는 걸 추천
+  review_status: true
+  collapse_walkthrough: true       # 상세 walkthrough를 기본적으로 접어서 표시
+
+  auto_review:
+    enabled: true
+    drafts: false                  # Draft PR은 자동 리뷰 제외
+
+  # 경로별 세부 리뷰 지침 (Java/Spring Boot + AWS CDK 기준 예시, 필요에 맞게 수정하세요)
+  path_instructions:
+    - path: "src/main/java/**/*controller*/**"
+      instructions: |
+        - 인증/인가 처리가 누락되지 않았는지 확인
+        - 요청 파라미터 검증(@Valid, @Validated) 여부 확인
+        - 예외를 그대로 노출하지 않고 적절히 처리하는지 확인
+
+    - path: "src/main/java/**/*service*/**"
+      instructions: |
+        - 트랜잭션 경계(@Transactional)가 올바른지 확인
+        - N+1 쿼리 등 성능 이슈 가능성 지적
+        - 비즈니스 로직과 데이터 접근 로직이 잘 분리되어 있는지 확인
+
+    - path: "src/main/java/**/*repository*/**"
+      instructions: |
+        - JPA 쿼리 메서드/네이티브 쿼리의 성능 문제 확인
+        - 인덱스가 필요한 조건절인지 검토
+
+    - path: "src/test/**"
+      instructions: |
+        - 테스트가 실제 동작을 검증하는지, 해피패스 외 예외/경계값 케이스도 다루는지 확인
+        - Mock 사용이 과도하지 않은지 검토
+
+    - path: "**/*.cdk.ts"
+      instructions: |
+        - IAM 권한이 필요 이상으로 넓게 부여되지 않았는지 확인
+        - 보안 그룹, 네트워크 설정이 최소 권한 원칙을 따르는지 확인
+
+    - path: "**/*.yaml"
+      instructions: |
+        - 시크릿(비밀번호, 키 등)이 하드코딩되어 있지 않은지 확인
+
+  # 리뷰에서 제외할 경로 (필요에 맞게 조정)
+  path_filters:
+    - "!**/*.lock"
+    - "!**/build/**"
+    - "!**/target/**"
+    - "!**/node_modules/**"
+    - "!**/*.min.js"
+
+  # 전체 리뷰에 공통 적용되는 지침
+  instructions: |
+    이 프로젝트는 Java/Spring Boot 기반 백엔드이며 AWS(EC2, RDS, CDK)를 인프라로 사용합니다.
+    다음을 최우선으로 확인해주세요:
+    - 보안 취약점 (SQL 인젝션, 인증/인가 누락, 시크릿 노출 등)
+    - 예외 처리 누락
+    - 성능 저하 가능성 (불필요한 쿼리, 반복문 내 I/O 등)
+    스타일이나 네이밍처럼 사소한 부분은 지적하지 않아도 됩니다.
+
+chat:
+  auto_reply: true   # PR 코멘트에서 @coderabbitai 로 대화 가능하도록 설정
