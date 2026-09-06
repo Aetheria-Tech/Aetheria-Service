@@ -11,6 +11,9 @@ reviews:
   auto_review:
     enabled: true
     drafts: false                  # Draft PR은 자동 리뷰 제외
+    base_branches:                 # 기본 브랜치(main) 외에 추가로 자동 리뷰할 브랜치들
+      - "develop"
+      - "release/*"
 
   # 경로별 세부 리뷰 지침 (Java/Spring Boot + AWS CDK 기준 예시, 필요에 맞게 수정하세요)
   path_instructions:
