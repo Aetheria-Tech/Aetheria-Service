@@ -39,11 +39,10 @@ public class SecurityConfig {
     };
 
     private static final String[] ACTUATOR_PATHS = {
-            "/actuator/health"
-    };
-
-    private static final String[] TEST_API_PATHS = {
-            "/api/v1/running-arts/sample"
+            "/actuator/health",
+            // 로드밸런서가 보는 /actuator/health/alb 같은 헬스 그룹까지 열어 둔다.
+            // 정확히 일치만 허용하면 그룹 경로가 401 이 되어 ALB 가 태스크를 계속 unhealthy 로 판정한다.
+            "/actuator/health/**"
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -95,7 +94,6 @@ public class SecurityConfig {
                         // 로그인은 인증 없이 접근 가능
                         .requestMatchers(LOGIN_PATHS).permitAll()
                         .requestMatchers(ACTUATOR_PATHS).permitAll()
-                        .requestMatchers(TEST_API_PATHS).permitAll()
                         // 그 외 모든 요청은 인증 필요
                         .anyRequest().authenticated()
                 )

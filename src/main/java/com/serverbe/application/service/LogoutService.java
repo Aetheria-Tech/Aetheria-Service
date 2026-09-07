@@ -3,7 +3,7 @@ package com.serverbe.application.service;
 import com.serverbe.application.port.in.oauth.LogoutUseCase;
 import com.serverbe.application.port.out.security.TokenResolver;
 import com.serverbe.application.service.helper.AuthSessionManager;
-import com.serverbe.infrastructure.config.properties.JwtProperties;
+import com.serverbe.application.config.SessionPolicy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -21,10 +21,10 @@ public class LogoutService implements LogoutUseCase {
     private final TokenResolver tokenResolver;
     private final Duration defaultRefreshTokenValidityMs;
 
-    public LogoutService(AuthSessionManager authSessionManager, TokenResolver tokenResolver, JwtProperties jwtProperties) {
+    public LogoutService(AuthSessionManager authSessionManager, TokenResolver tokenResolver, SessionPolicy sessionPolicy) {
         this.authSessionManager = authSessionManager;
         this.tokenResolver = tokenResolver;
-        this.defaultRefreshTokenValidityMs = jwtProperties.refreshToken().expirationDays();
+        this.defaultRefreshTokenValidityMs = sessionPolicy.refreshTokenTtl();
     }
 
     /**

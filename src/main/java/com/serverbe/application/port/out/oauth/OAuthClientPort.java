@@ -1,7 +1,6 @@
 package com.serverbe.application.port.out.oauth;
 
 import com.serverbe.application.port.out.dto.oauth.OAuthUserInfoResult;
-import com.serverbe.application.port.out.dto.oauth.SocialTokenRefreshResult;
 import com.serverbe.domain.model.user.vo.OAuthProvider;
 import reactor.core.publisher.Mono;
 
@@ -29,19 +28,16 @@ public interface OAuthClientPort {
     Mono<Boolean> unlink(OAuthProvider provider, String oauthId, String oauthRefreshToken);
 
     /**
-     * @responsibility 저장된 소셜 리프레시 토큰을 사용하여 만료된 소셜 액세스 토큰 세트를 새롭게 갱신합니다.
-     * @param provider 토큰을 갱신할 소셜 제공자 {@link OAuthProvider}
-     * @param refreshToken 소셜 플랫폼에서 발급했던 리프레시 토큰
-     * @return 새롭게 발급된 소셜 토큰 정보들을 담은 {@link Mono<SocialTokenRefreshResult>}
+     * @responsibility 이 어댑터가 담당하는 소셜 제공자를 <b>선언</b>합니다.
+     * @return 이 구현체가 책임지는 소셜 제공자 {@link OAuthProvider}
+     * @implSpec 구현체 하나가 제공자 하나를 담당합니다. 이 값이 곧 디스패치 키이므로, 두 구현체가
+     * 같은 값을 선언하면 {@code infrastructure.config.OAuthClientConfig}에서 <b>기동이 실패합니다.</b>
+     * @implNote 이전에는 {@code boolean supports(OAuthProvider)}였습니다. 그것은 <b>질의</b>라
+     * 호출자가 후보를 하나씩 들고 물어봐야 했고, 그래서 서비스마다 리스트를 순회하는 선택 코드가
+     * 생겼습니다. <b>선언</b>은 키가 되므로 조립이 기동 시점에 한 번으로 끝납니다 — 포트가
+     * "나를 고르는 방법"까지 계약에 적을 필요는 없습니다.
      */
-    Mono<SocialTokenRefreshResult> refreshSocialToken(OAuthProvider provider, String refreshToken);
-
-    /**
-     * @responsibility 현재 어댑터 인스턴스가 인자로 전달된 특정 소셜 제공자를 지원하는지 확인합니다.
-     * @param provider 검증하고자 하는 소셜 제공자 {@link OAuthProvider}
-     * @return 해당 제공자를 지원하여 처리가 가능한 경우 true, 아니면 false
-     */
-    boolean supports(OAuthProvider provider);
+    OAuthProvider provider();
 
     /**
      * @responsibility 사용자를 인증하기 위한 소셜 플랫폼별 로그인 페이지(Authorization Endpoint) URL을 생성하여 반환합니다.

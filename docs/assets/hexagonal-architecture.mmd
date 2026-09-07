@@ -1,0 +1,71 @@
+%% 헥사고날 아키텍처 다이어그램 — 포트폴리오용 SVG의 원본.
+%%
+%% 이 파일은 라이트 배경(#F4F8FA)용 팔레트가 적용된 상태이며, 그대로 렌더하면
+%% hexagonal-architecture-light.svg 가 나옵니다. 다크 배경(#21295C)용은 아래 색만
+%% 바꿔 렌더한 것입니다.
+%%
+%%   구분        라이트                              다크
+%%   글자        #16213E                             #F4F8FA
+%%   어댑터      stroke #1C7293 / fill #FFFFFF       stroke #63B4D1 / fill #1A2148
+%%   어댑터 묶음 fill   #E8F1F5                      fill   #2C3873
+%%   애플리케이션 stroke #065A82 / fill #FFFFFF       stroke #4FA3D8 / fill #1A2148
+%%   앱 묶음     fill   #DFEAF2                      fill   #2F3E85
+%%   도메인      stroke #02C39A / fill #FFFFFF       stroke #02C39A / fill #152F3F
+%%   도메인 묶음 fill   #DEF6EF                      fill   #1B4A5C
+%%   선          #1C7293                             #9CC7DC
+%%
+%% 렌더 시 배경은 -b transparent, 라벨은 htmlLabels:false(순수 <text>)로 뽑았습니다.
+%% 점선(구현·매핑)의 화살촉은 mermaid가 왼쪽 화살표에 마커를 붙이지 않아
+%% 렌더 후 pointStart 마커를 직접 얹었습니다.
+
+flowchart TB
+    subgraph IN["Inbound Adapter"]
+        SCH["Scheduler · Event Listener"]
+        SQS["SQS Listener"]
+        C["REST Controller · JWT Filter"]
+    end
+
+    subgraph APP["Application Layer"]
+        PI["Port In — UseCase Interface"]
+        SVC["Service — 비즈니스 오케스트레이션"]
+        PO["Port Out — Repository / External Interface"]
+    end
+
+    subgraph DOM["Domain Layer"]
+        M["Model · VO · Exception<br/>순수 Java Record, 프레임워크 의존 없음"]
+    end
+
+    subgraph OUT["Outbound Adapter"]
+        DB["JPA · Querydsl → MySQL"]
+        RD["Redis — Token · RateLimit · GEO · Pub/Sub"]
+        EX["External API — Kakao · Google"]
+        AWS["AWS — S3 · SageMaker"]
+        NOTI["SSE · Discord"]
+    end
+
+    C --> PI
+    SQS --> PI
+    SCH --> PI
+    PI <-.-|구현| SVC
+    SVC --> PO
+    PO <-.-|구현| DB
+    PO <-.-|구현| RD
+    PO <-.-|구현| EX
+    PO <-.-|구현| AWS
+    PO <-.-|구현| NOTI
+
+    SVC --> M
+    M <---|매핑| DB
+
+    classDef adapterNode fill:#FFFFFF,stroke:#1C7293,stroke-width:1.4px,color:#16213E
+    classDef appNode fill:#FFFFFF,stroke:#065A82,stroke-width:1.4px,color:#16213E
+    classDef domainNode fill:#FFFFFF,stroke:#02C39A,stroke-width:2px,color:#16213E
+
+    class C,SQS,SCH,DB,RD,EX,AWS,NOTI adapterNode
+    class PI,SVC,PO appNode
+    class M domainNode
+
+    style IN fill:#E8F1F5,stroke:#1C7293,stroke-width:1.2px,color:#16213E
+    style OUT fill:#E8F1F5,stroke:#1C7293,stroke-width:1.2px,color:#16213E
+    style APP fill:#DFEAF2,stroke:#065A82,stroke-width:2px,color:#16213E
+    style DOM fill:#DEF6EF,stroke:#02C39A,stroke-width:2px,color:#16213E

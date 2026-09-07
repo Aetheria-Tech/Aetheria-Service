@@ -1,0 +1,30 @@
+# 실제 운영 시크릿이 들어 있다. 이미지에 절대 들어가면 안 된다.
+.env
+
+# 빌드 산출물. build/generated 가 sourceSets 에 수동 등록되어 있어,
+# 호스트의 낡은 산출물이 딸려 들어가면 컨테이너 안의 컴파일 결과를 오염시킨다.
+build/
+out/
+.gradle/
+
+# CDK 인프라 코드. 이미지에 COPY 하지는 않지만, 제외하지 않으면 node_modules 220MB 가
+# 빌드마다 도커 데몬/러너로 전송된다.
+infra/
+
+.git/
+.github/
+.idea/
+.gemini/
+.vscode/
+*.iml
+
+Dockerfile
+.dockerignore
+README.md
+HELP.md
+
+# 로컬 전용. 이미지에 들어갈 이유가 없다.
+docker-compose.yml
+
+# 문서. 이미지에 들어갈 이유가 없다.
+docs/

@@ -1,7 +1,7 @@
 package com.serverbe.application.port.out.security;
 
 import com.serverbe.domain.model.user.vo.Role;
-import org.springframework.security.core.Authentication;
+import com.serverbe.application.port.out.security.dto.JwtPayloadDto;
 
 import java.time.Instant;
 
@@ -12,11 +12,15 @@ import java.time.Instant;
 public interface TokenResolver {
 
     /**
-     * @responsibility 액세스 토큰에 포함된 클레임(Claims) 정보를 바탕으로 Spring Security의 인증 객체({@link Authentication})를 생성합니다.
      * @param accessToken 정보를 추출할 액세스 토큰 문자열
-     * @return 인증된 사용자의 신원 및 권한 정보를 담고 있는 {@link Authentication} 객체
+     * @return 사용자 식별자와 권한을 담은 {@link JwtPayloadDto}
+     * @responsibility 액세스 토큰을 <b>한 번만</b> 파싱·복호화해 사용자 식별자와 권한을 추출합니다.
+     * @implNote 프레임워크의 인증 객체를 만드는 일은 이 포트의 책임이 아닙니다. 그것은 인바운드 웹
+     * 어댑터({@code adapter.in.web.filter.JwtAuthenticationFilter})가 합니다. 포트가
+     * {@code org.springframework.security.core.Authentication}을 반환하면 애플리케이션 계층 전체가
+     * Spring Security에 묶여, 인증 방식을 바꿀 때 포트까지 함께 흔들립니다.
      */
-    Authentication getAuthentication(String accessToken);
+    JwtPayloadDto resolvePayload(String accessToken);
 
     /**
      * @responsibility 액세스 토큰의 서명 위변조 여부, 구조적 결함 및 만료 시간을 확인하여 사용 가능 여부를 판별합니다.

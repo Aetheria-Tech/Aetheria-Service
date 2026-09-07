@@ -7,6 +7,13 @@ spring:
       region:
         static: ap-northeast-2 # 서울 리전
       credentials:
+      sqs:
+        # AiNotificationSqsListener 의 @SqsListener 는 컨텍스트 기동 중 실제 SQS 에 큐 URL 을 조회한다.
+        # 자격증명이 없는 환경(로컬 도커, CI)에서는 이 단계에서 기동 자체가 중단된다.
+        # false 로 두면 @SqsListener 를 처리하는 BeanPostProcessor 가 등록되지 않아 폴링만 사라지고,
+        # 리스너 빈 자체는 남아 AiTestController 의 mock-sqs-receive 시뮬레이션은 그대로 동작한다.
+        # 운영(ECS)은 태스크 역할로 자격증명이 있으므로 기본값 true 를 그대로 쓴다.
+        enabled: ${AWS_SQS_ENABLED:true}
 
 
   data:
@@ -24,19 +31,27 @@ spring:
     url: ${DATABASE_URL} # 데이터베이스 URL
     username: ${DATABASE_USERNAME}                               # 데이터베이스 유저 이름
     password: ${DATABASE_PASSWORD}                                 # 데이터베이스 유저의 비밀번호
+  # ===================================================================
+  # 스키마 마이그레이션 (Flyway)
+  # 스키마 변경 권한은 전적으로 Flyway가 가지며, Hibernate는 검증만 수행합니다.
+  # ddl-auto=update는 기존 테이블에 유니크 제약을 붙여준다는 보장이 없고,
+  # 컬럼 추가 시 기존 행을 백필할 수도 없어 데이터 정합성을 맡길 수 없습니다.
+  # ===================================================================
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true   # 이미 테이블이 존재하는 기존 DB에서도 안전하게 시작
+    baseline-version: 1         # 기존 DB는 V1을 '적용됨'으로 간주하고 V2부터 실행
+
   # 스프링 JPA 설정
   jpa:
     hibernate:
-      ddl-auto: update                             # DB 테이블 생성 전략 설정
+      ddl-auto: validate                           # 엔티티와 실제 스키마의 일치 여부만 검증 (스키마 변경은 Flyway 담당)
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQL8Dialect # MySQL 8.x용 Dialect
-        format_sql: true                             # 쿼리 로그를 정렬해서 출력한다
-        show_sql: true                               # 실행되는 SQL 쿼리를 콘솔에 출력한다. 프로덕션 환경에서는 false로 변경해야 함.
-    defer-datasource-initialization: true            # SQL 스크립트 초기화를 JPA 앤티티 매니저 초기화 이후로 지연시킨다. 이는 data.sql이 있어서 필요하다.
-  sql:
-    init:
-      mode: always                                    # SQL 초기화 스크립트를 언제 실행할지 결정한다.
+        format_sql: ${JPA_SHOW_SQL:false}            # 쿼리 로그를 정렬해서 출력한다
+        show_sql: ${JPA_SHOW_SQL:false}              # 실행되는 SQL 쿼리를 콘솔에 출력한다. 운영에서는 꺼 둔다.
 
 management:
   endpoints:
@@ -46,6 +61,18 @@ management:
   endpoint:
     health:
       show-details: always # 서킷 브레이커 상세 상태를 보기 위해 필수!
+      # 로드밸런서 전용 헬스 그룹.
+      # 기본 /actuator/health 는 서킷브레이커·db·redis 인디케이터를 모두 집계하므로,
+      # 카카오 API 가 느려져 서킷이 열리는 것만으로 503 이 되어 ALB 가 태스크를 죽인다.
+      # 외부 API 장애가 서비스 전체 장애로 번지는 경로라 로드밸런서는 여기를 보지 않게 한다.
+      # readinessState 는 '스프링 컨텍스트 기동 완료' 만 반영하므로, 배포 중 트래픽 유입은 막으면서
+      # 이미 떠 있는 태스크가 외부 장애로 끌려 내려가지는 않는다.
+      probes:
+        enabled: true
+      group:
+        alb:
+          include: readinessState
+          show-details: never
   health:
     circuitbreakers:
       enabled: true
@@ -140,6 +167,8 @@ redis:
   blacklist:
     access-token-prefix: "BL:AT"
     refresh-token-prefix: "BL:RT"
+  shedlock:
+    prefix: "Aetheria-Shedlock"
 
 kakao:
   admin-key: ${KAKAO_ADMIN_KEY}
@@ -159,7 +188,7 @@ google:
   auth:
     client-id: ${GOOGLE_CLIENT_ID}                                  # 구글 클라우드 콘솔에서 발급받은 클라이언트 ID
     client-secret: ${GOOGLE_CLIENT_SECRET}                          # 구글 클라우드 콘솔에서 발급받은 클라이언트 보안 비밀번호
-    redirect-uri: http://localhost:8080/api/v1/auth/callback/google # AuthController의 callback 엔드포인트와 일치해야 함
+    redirect-uri: ${GOOGLE_REDIRECT_URI}                            # AuthController의 callback 엔드포인트와 일치해야 함
     oauth-api: https://oauth2.googleapis.com                         # 토큰 발급 및 인증 관련 API 주소
     api: https://www.googleapis.com                                 # 유저 정보 조회 관련 API 주소
 
@@ -198,11 +227,20 @@ rate-limit:
 
 aws:
   s3:
-    ai-input-bucket: "my-project-ai-inference-input-bucket" # 실제 생성된 버킷명
+    ai-input-bucket: ${AWS_S3_AI_INPUT_BUCKET} # 환경마다 다르므로 인프라(CDK)가 주입한다
+    ai-output-bucket: ${AWS_S3_AI_OUTPUT_BUCKET:} # SageMaker 결과물 버킷. 비워두면 Lifecycle 미적용
+    lifecycle:
+      enabled: ${AWS_S3_LIFECYCLE_ENABLED:false} # true로 켜면 기동 시 아래 정책을 버킷에 자동 적용
+      temp-prefixes: # 입력 버킷에서 생성 1일 후 자동 만료(삭제)시킬 임시 경로들
+        - "inputs/"
+        - "temp/"
+      output-prefixes: # 출력 버킷에서 만료시킬 경로들 (삭제 실패분 및 고아 결과물의 최종 방어선)
+        - "outputs/"
+      expiration-days: 1 # Standard 클래스 유지 (IA는 최소 보관 30일 페널티 있어 미사용)
   sagemaker:
-    endpoint-name: "my-project-async-inference-endpoint"    # 실제 생성된 엔드포인트명
+    endpoint-name: ${AWS_SAGEMAKER_ENDPOINT_NAME}          # 인프라(CDK)가 주입한다
   sqs:
-    ai-notification-queue-name: "ai-generation-notification-queue" # 나중에 CDK로 만들 큐 이름
+    ai-notification-queue-name: ${AWS_SQS_AI_NOTIFICATION_QUEUE_NAME} # 인프라(CDK)가 주입한다
 
 
 
@@ -217,3 +255,15 @@ notification:
 
 task:
   task-timeout-threshold-minutes: 10
+
+
+# ===================================================================
+# 스레드 점유 측정(bench 프로파일) 전용 설정.
+# 상용 경로에는 영향이 없다 - BenchController 가 @Profile("bench") 뒤에 있다.
+# 값은 docker-compose.bench.yml 이 BENCH_STUB_URL / BENCH_STUB_PATH 로 덮어쓴다.
+# 측정 절차는 docs/benchmark/01-thread-occupancy.md 를 보라.
+# ===================================================================
+bench:
+  stub:
+    url: ${BENCH_STUB_URL:http://localhost:8090}
+    path: ${BENCH_STUB_PATH:/v2/local/search/address.json}

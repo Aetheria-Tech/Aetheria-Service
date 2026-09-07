@@ -74,8 +74,11 @@ class GoogleOAuthAdapterTest {
         // 🚀 testConfig가 무조건 기본값으로 적용되도록 설정
         CircuitBreakerRegistry testRegistry = CircuitBreakerRegistry.of(testConfig);
 
-        // 어댑터 내부에서 사용할 서킷 브레이커 이름 (예: "googleApi")
-        this.googleCircuitBreaker = testRegistry.circuitBreaker("googleApi");
+        // 참고: GoogleOAuthAdapter는 "googleTokenApi"(토큰 발급)와 "googleUserInfoApi"(유저 정보 조회)
+        // 서킷 브레이커를 각각 따로 등록합니다. circuitBreaker_Opens_And_Triggers_Fallback 테스트는
+        // 토큰 발급 단계(getGoogleTokenResponse)에서 500 에러를 일으키므로 "googleTokenApi"를 관찰해야 합니다.
+        // (이전에는 존재하지 않는 이름("googleApi")을 관찰하고 있어 실패가 전혀 기록되지 않았습니다.)
+        this.googleCircuitBreaker = testRegistry.circuitBreaker("googleTokenApi");
 
         // 5. Adapter 초기화
         googleOAuthAdapter = new GoogleOAuthAdapter(

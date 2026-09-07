@@ -41,7 +41,8 @@ dependencies {
      */
     // Spring Web: RESTful API 개발을 위한 표준 MVC 프레임워크 (Tomcat 내장)
     implementation 'org.springframework.boot:spring-boot-starter-web'
-    // Spring WebFlux: 비동기 논블로킹(Non-blocking) 개발 및 WebClient 사용을 위함
+    // Spring WebFlux: 서버로 띄우지 않습니다 (starter-web 이 있으면 Spring Boot 는 서블릿 스택을 고릅니다).
+    // WebClient 와 Reactor 타입(Mono/Flux)을 쓰기 위한 의존성입니다. 근거: docs/architecture/servlet-and-reactor.md
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     // SpringDoc OpenAPI: Swagger UI를 통해 API 문서를 자동 생성하고 테스트 화면 제공
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.3'
@@ -55,6 +56,13 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     // MySQL Connector: MySQL 데이터베이스와 애플리케이션 연결을 위한 드라이버
     runtimeOnly 'com.mysql:mysql-connector-j'
+
+    // Flyway: 스키마 변경을 버전 관리되는 마이그레이션 스크립트로 관리한다.
+    // ddl-auto=update 는 기존 테이블에 유니크 제약을 붙여준다는 보장이 없고 기존 행 백필도 못하므로,
+    // 스키마 변경 권한을 Hibernate 에서 Flyway 로 일원화했다. (Hibernate 는 validate 만 수행)
+    implementation 'org.flywaydb:flyway-core'
+    // Flyway 9 부터 MySQL 지원은 별도 모듈로 분리되어 있다.
+    implementation 'org.flywaydb:flyway-mysql'
 
     // Querydsl JPA: 타입 세이프(Type-Safe)한 동적 쿼리 작성을 지원 (Jakarta 사양)
     implementation 'com.querydsl:querydsl-jpa:5.0.0:jakarta'
@@ -86,7 +94,7 @@ dependencies {
     implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'org.springframework.boot:spring-boot-starter-aop'
     implementation 'com.github.ben-manes.caffeine:caffeine'
-    implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0' // WebFlux(Mono) 지원용
+    implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0' // Reactor(Mono) 체인에 CircuitBreakerOperator 를 붙이기 위함
 
     // Spring Actuator
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
@@ -105,23 +113,96 @@ dependencies {
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
     // Spring Boot Test: 통합 테스트를 위한 기본 환경 및 라이브러리(JUnit5, AssertJ 등) 제공
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    // Reactor Test: WebFlux의 Mono, Flux 비동기 스트림 테스트 지원
+    // Reactor Test: Reactor의 Mono, Flux 비동기 스트림 테스트 지원
     testImplementation 'io.projectreactor:reactor-test'
     // Security Test: Spring Security가 적용된 환경에서의 권한 기반 테스트 지원
     testImplementation 'org.springframework.security:spring-security-test'
     // JUnit Platform Launcher: 테스트 실행을 위한 JUnit 플랫폼 엔진
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // ArchUnit: 헥사고날 경계 규칙을 테스트로 고정한다. 규약(package-info)만으로는 위반을 막지 못한다.
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
+
+    // Testcontainers: 중복 소비 방지(멱등성)를 **실제 MySQL 과 실제 SQS 로** 검증하기 위해 들어왔다.
+    // 그 전까지 멱등성 검증은 findByIdForUpdate 를 Mockito 로 스텁한 단위 테스트뿐이어서,
+    // SELECT ... FOR UPDATE 가 정말 직렬화하는지도, at-least-once 중복 전달이 정말 걸러지는지도
+    // 확인된 적이 없었다. 근거: docs/benchmark/02-sqs-idempotency-consistency.md
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:mysql'
+    testImplementation 'org.testcontainers:localstack'
+    // Awaitility: SQS 소비는 별도 폴링 스레드에서 일어나 완료 시점을 테스트가 알 수 없다.
+    testImplementation 'org.awaitility:awaitility'
 
     /**
      * AWS 인프라 연동
      */
-    // AWS SDK BOM: AWS SDK 모듈 간의 버전 충돌을 방지하고 버전을 중앙 관리합니다.
+    // AWS SDK BOM: AWS SDK 모듈 간의 버전 충돌을 방지하고 버전을 중앙 관리
     implementation platform('software.amazon.awssdk:bom:2.24.0')
     implementation 'software.amazon.awssdk:s3'
     implementation 'software.amazon.awssdk:sagemakerruntime'
     implementation 'io.awspring.cloud:spring-cloud-aws-starter-sqs:3.1.1'
+
+    // ShedLock (Spring Boot & Redis Provider)
+    implementation 'net.javacrumbs.shedlock:shedlock-spring:5.13.0'
+    implementation 'net.javacrumbs.shedlock:shedlock-provider-redis-spring:5.13.0'
+
+    /**
+     * 설정 로딩
+     */
+    // spring-dotenv: 애플리케이션이 .env 파일을 PropertySource 로 직접 읽게 한다.
+    // Spring Boot 는 .env 를 네이티브로 지원하지 않아, 그동안 IntelliJ EnvFile 플러그인이 붙은
+    // 실행 구성에서만 ${DATABASE_URL} 이 치환되고 gradlew bootRun 이나 테스트에서는 실패했다.
+    implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 }
 
+/**
+ * 기본 test 태스크: 외부 인프라 없이 언제나 실행 가능한 단위 테스트만 수행한다.
+ * 실제 MySQL/Redis 가 필요한 테스트는 'integration' 태그로 분리해 제외한다.
+ */
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'integration'
+    }
+
+    // @SqsListener 는 컨텍스트 기동 중 실제 SQS 로 GetQueueUrl 을 날린다.
+    // 자격증명이 없는 개발 PC 와 CI 러너에서는 이 단계에서 컨텍스트 기동 자체가 막히므로,
+    // 테스트에서는 SQS 폴링을 끈다. 리스너 빈 자체는 남아 있어 단위 테스트로 직접 호출할 수 있다.
+    environment 'AWS_SQS_ENABLED', 'false'
+}
+
+/**
+ * 통합·성능 테스트. 로컬에 MySQL 과 Redis 가 기동되어 있어야 한다.
+ * check 에 연결하지 않으므로 인프라가 없는 환경에서도 `gradlew build` 는 통과한다.
+ */
+tasks.register('integrationTest', Test) {
+    group = 'verification'
+    description = '실제 MySQL/Redis 가 필요한 통합·성능 테스트를 실행한다.'
+
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+
+    // 로컬 MySQL·Redis 는 띄우지만 AWS 자격증명까지 요구하지는 않는다. (위 test 태스크와 같은 이유)
+    environment 'AWS_SQS_ENABLED', 'false'
+
+    shouldRunAfter tasks.named('test')
+}
+
+/**
+ * 실행 가능 jar 의 이름을 고정한다.
+ * <p>
+ * 이름을 고정하지 않으면 산출물이 {@code Server-BE-0.0.1-SNAPSHOT.jar} 과
+ * {@code Server-BE-0.0.1-SNAPSHOT-plain.jar} 두 개가 되어, Dockerfile 의
+ * {@code COPY build/libs/*.jar} 가 어느 쪽을 집을지 알 수 없게 된다.
+ * 버전을 올릴 때마다 Dockerfile 을 고쳐야 하는 문제도 함께 사라진다.
+ */
+bootJar {
+    archiveFileName = 'app.jar'
+}
+
+// 부트 jar 만 배포하므로 라이브러리용 plain jar 는 만들지 않는다.
+jar {
+    enabled = false
 }

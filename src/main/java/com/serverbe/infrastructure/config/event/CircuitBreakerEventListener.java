@@ -1,7 +1,7 @@
 package com.serverbe.infrastructure.config.event;
 
 import com.github.benmanes.caffeine.cache.Cache;
-import com.serverbe.application.service.NotificationService;
+import com.serverbe.application.port.out.notification.AlertNotificationPort;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import jakarta.annotation.PostConstruct;
@@ -24,7 +24,7 @@ public class CircuitBreakerEventListener {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
     private final Cache<String, Integer> localRateLimitCache;
-    private final NotificationService notificationService;
+    private final AlertNotificationPort alertNotificationPort;
 
     /**
      * 스프링 빈(Bean) 초기화 직후, 애플리케이션 내의 모든 서킷 브레이커에 상태 변화 감지 리스너를 등록합니다.
@@ -81,7 +81,7 @@ public class CircuitBreakerEventListener {
         }
 
         // 복구 완료 메시지를 관리자 디스코드 채널로 발송
-        notificationService.sendDiscordNotification(
+        alertNotificationPort.sendAlert(
                 String.format("🟢 **[복구 알림]** `%s` 연결이 복구되어 서킷 브레이커가 CLOSED 되었습니다. 시스템이 정상화되었습니다.", cbName)
         );
     }
@@ -98,7 +98,7 @@ public class CircuitBreakerEventListener {
         String extraMessage = "redisRateLimit".equals(cbName) ? " L1 로컬 방어막이 가동됩니다. " : " ";
 
         // 장애 발생 메시지를 관리자 디스코드 채널로 즉시 발송
-        notificationService.sendDiscordNotification(
+        alertNotificationPort.sendAlert(
                 String.format("🔴 **[장애 알림]** `%s` 장애 발생으로 서킷 브레이커가 OPEN 되었습니다!%s확인이 필요합니다!", cbName, extraMessage)
         );
     }

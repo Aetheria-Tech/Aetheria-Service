@@ -15,9 +15,9 @@ import java.util.UUID;
 public class FakeSageMakerAdapter implements SageMakerAsyncPort {
 
     @Override
-    public String invokeAsync(String inputS3Uri) {
+    public String invokeAsync(String taskId, String inputS3Uri) {
         log.info("[MOCK] SageMaker 비동기 추론 호출 시뮬레이션 작동 중...");
-        log.info("[MOCK] 전달받은 Input URI: {}", inputS3Uri);
+        log.info("[MOCK] Task ID(inferenceId): {}, 전달받은 Input URI: {}", taskId, inputS3Uri);
 
         // 실제 AI가 연산하는 것처럼 1초 정도 대기 (필요시 주석 해제)
         // try { Thread.sleep(1000); } catch (InterruptedException e) {}

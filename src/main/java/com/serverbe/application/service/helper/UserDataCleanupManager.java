@@ -2,7 +2,7 @@ package com.serverbe.application.service.helper;
 
 import com.serverbe.application.port.out.jpa.RunningArtRepositoryPort;
 import com.serverbe.application.port.out.jpa.UserRepositoryPort;
-import com.serverbe.application.port.out.token.TokenPersistencePort;
+import com.serverbe.application.port.out.token.RefreshTokenSessionPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -23,7 +23,7 @@ public class UserDataCleanupManager {
 
     private final UserRepositoryPort userRepositoryPort;
     private final RunningArtRepositoryPort runningArtRepositoryPort;
-    private final TokenPersistencePort tokenPersistencePort;
+    private final RefreshTokenSessionPort refreshTokenSessionPort;
 
     /**
      * @param userId 삭제 대상 사용자의 식별자
@@ -45,7 +45,7 @@ public class UserDataCleanupManager {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    tokenPersistencePort.deleteAllRefreshTokens(userId);
+                    refreshTokenSessionPort.deleteAllRefreshTokens(userId);
                     log.info("[DATA CLEANUP] Redis 세션 데이터가 성공적으로 삭제되었습니다. UserID: {}", userId);
                 }
             });

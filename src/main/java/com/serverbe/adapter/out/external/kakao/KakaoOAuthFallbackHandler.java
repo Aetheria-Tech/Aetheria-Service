@@ -1,7 +1,6 @@
 package com.serverbe.adapter.out.external.kakao;
 
 import com.serverbe.application.port.out.dto.oauth.OAuthUserInfoResult;
-import com.serverbe.application.port.out.dto.oauth.SocialTokenRefreshResult;
 import com.serverbe.domain.exception.external.ExternalApiErrorCode;
 import com.serverbe.domain.exception.external.ExternalApiException;
 import com.serverbe.domain.model.user.vo.OAuthProvider;
@@ -29,14 +28,6 @@ public class KakaoOAuthFallbackHandler {
         return Mono.error(new ExternalApiException(
                 ExternalApiErrorCode.FAILED_SOCIAL_API,
                 "카카오 서버 지연으로 인해 연동 해제에 실패했습니다."
-        ));
-    }
-
-    public Mono<SocialTokenRefreshResult> fallbackRefreshSocialToken(OAuthProvider provider, String refreshToken, Throwable t) {
-        log.error("🚨 [CircuitBreaker/Timeout] 카카오 토큰 갱신 API 장애 발생: {}", t.getMessage());
-        return Mono.error(new ExternalApiException(
-                ExternalApiErrorCode.FAILED_SOCIAL_API,
-                "카카오 서버 지연으로 인해 토큰 갱신에 실패했습니다."
         ));
     }
 }

@@ -1,74 +1,63 @@
 package com.serverbe.application.service;
 
-import com.serverbe.application.port.in.art.*;
+import com.serverbe.application.port.dto.PageQuery;
+import com.serverbe.application.port.dto.PageResult;
+import com.serverbe.application.port.in.art.DeleteRunningArtUseCase;
+import com.serverbe.application.port.in.art.GetRunningArtUseCase;
+import com.serverbe.application.port.in.art.UpdateRunningArtUseCase;
 import com.serverbe.application.port.in.dto.art.RunningArtResult;
 import com.serverbe.application.port.in.dto.art.RunningArtUpdateCommand;
 import com.serverbe.application.port.out.art.RunningArtRedisPort;
 import com.serverbe.application.port.out.jpa.RunningArtRepositoryPort;
+import com.serverbe.domain.exception.BusinessException;
 import com.serverbe.domain.exception.art.ArtErrorCode;
 import com.serverbe.domain.exception.art.ArtException;
 import com.serverbe.domain.model.art.RunningArt;
-import com.serverbe.domain.exception.BusinessException;
-import com.serverbe.domain.model.art.vo.Proficiency;
-import com.serverbe.infrastructure.config.properties.ArtProperties;
-import com.serverbe.infrastructure.util.PolylineUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
+
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
- * @responsibility 사용자가 생성한 런닝 아트(GPS 궤적 데이터 기반 기록)의 생명주기를 관리하고 접근 권한을 제어합니다.
- * @implSpec {@link GetRunningArtUseCase}, {@link DeleteRunningArtUseCase}, {@link UpdateRunningArtUseCase}를 모두 구현하는 통합 관리 서비스입니다.
+ * @responsibility 사용자가 생성한 런닝 아트의 조회·수정·삭제를 처리하며, 그 과정에서 접근 권한을 제어합니다.
+ * @implSpec 세 유스케이스({@link GetRunningArtUseCase}, {@link UpdateRunningArtUseCase},
+ * {@link DeleteRunningArtUseCase})가 한 클래스에 있는 것은 개수 때문이 아니라 <b>{@link #findAndVerifyOwner}를
+ * 공유하기 때문</b>입니다. 셋 다 "이 아트가 요청자의 것인가"를 먼저 묻고 시작합니다.
+ * @implNote 위치 기반 탐색({@link RunningArtSearchService})과 AI 결과 등록
+ * ({@link RunningArtRegistrationService})은 <b>여기 없습니다.</b> 전자는 소유권 개념이 없는 리액티브
+ * 탐색이고 후자는 호출자가 사용자가 아니라 내부 흐름이라, 협력자도 실행 모델도 이 셋과 공유하지 않습니다.
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class RunningArtService implements
         GetRunningArtUseCase,
         DeleteRunningArtUseCase,
-        UpdateRunningArtUseCase,
-        GetNearbyRunningArtUseCase,
-        RegisterCompletedArtUseCase
+        UpdateRunningArtUseCase
 {
 
     private final RunningArtRepositoryPort repositoryPort;
     private final RunningArtRedisPort runningArtRedisPort;
-    private final double maxRadius;
-    private final int maxResultLimit;
-
-    public RunningArtService(RunningArtRepositoryPort repositoryPort, RunningArtRedisPort runningArtRedisPort, ArtProperties artProperties) {
-        this.repositoryPort = repositoryPort;
-        this.runningArtRedisPort = runningArtRedisPort;
-        this.maxRadius = artProperties.maxRadius();
-        this.maxResultLimit = artProperties.maxResultLimit();
-    }
 
     /**
-     * @param userId   런닝 아트를 조회할 사용자의 고유 식별자
-     * @param pageable 페이징 정보
+     * @param userId    런닝 아트를 조회할 사용자의 고유 식별자
+     * @param pageQuery 페이징·정렬 정보
      * @return 사용자의 런닝 아트 정보 페이지
      * @requirement UC-ART-03: 사용자의 전체 런닝 아트 조회 요청
      * @responsibility 특정 사용자가 보유한 모든 런닝 아트 목록을 조회합니다.
-     * @implSpec 1. {@link RunningArtRepositoryPort#findByUserId(Long, Pageable)}를 통해 해당 유저의 엔티티 목록을 획득합니다.<br>
-     * 2. {@link Page#map(java.util.function.Function)}을 활용하여 도메인 모델을 {@link RunningArtResult} DTO로 일괄 변환합니다.
+     * @implSpec 1. {@link RunningArtRepositoryPort#findByUserId(Long, PageQuery)}를 통해 해당 유저의 엔티티 목록을 획득합니다.<br>
+     * 2. {@link PageResult#map(java.util.function.Function)}을 활용하여 도메인 모델을 {@link RunningArtResult} DTO로 일괄 변환합니다.
      * @implNote 현재 순수 JPA로 구현되어 있으며, 대량 데이터 조회 시 성능 최적화가 필요할 경우 Querydsl Projection 도입을 고려해야 합니다.
      */
     @Override
     @Transactional(readOnly = true)
-    public Page<RunningArtResult> getRunningArtsByUserId(Long userId, Pageable pageable) {
-        return repositoryPort.findByUserId(userId, pageable).map(RunningArtResult::toResult);
+    public PageResult<RunningArtResult> getRunningArtsByUserId(Long userId, PageQuery pageQuery) {
+        return repositoryPort.findByUserId(userId, pageQuery).map(RunningArtResult::toResult);
     }
 
     /**
@@ -132,8 +121,13 @@ public class RunningArtService implements
     /**
      * @param userId 모든 데이터를 삭제할 사용자의 고유 식별자
      * @requirement UC-ART-06: 사용자 전체 런닝 아트 삭제 요청
-     * @responsibility 특정 사용자와 연관된 모든 런닝 아트 데이터를 삭제합니다. 주로 회원 탈퇴 시 호출됩니다.
+     * @responsibility 특정 사용자와 연관된 모든 런닝 아트 데이터를 삭제합니다.
      * @implSpec {@link TransactionSynchronizationManager}를 사용하여 커밋이 성공한 후에만 Redis에서 GEO 데이터가 삭제되도록 함.
+     * @implNote 유일한 호출자는 사용자가 직접 여는 {@code DELETE /api/v1/running-arts/me}입니다.
+     * <b>회원 탈퇴는 이 경로를 타지 않습니다</b> — {@code UserDataCleanupManager}가
+     * {@link RunningArtRepositoryPort#deleteByUserId(Long)}를 직접 부르므로, 탈퇴 시에는 아래 Redis
+     * 정리가 실행되지 않아 GEO 항목이 고아로 남습니다. 그 경로를 이 유스케이스로 돌리는 것은
+     * 동작 변경이라 별도 항목으로 다룹니다.
      */
     @Override
     @Transactional
@@ -185,90 +179,5 @@ public class RunningArtService implements
             );
         }
         return runningArt;
-    }
-
-    /**
-     * @param lat    검색 중심점의 위도 (Latitude)
-     * @param lon    검색 중심점의 경도 (Longitude)
-     * @param radius 검색 반경 (단위: km)
-     * @return 검색된 주변 런닝 아트 목록을 스트리밍하는 {@link Flux<RunningArtResult>}
-     * @requirement UC-ART-07: 위치 기반 주변 런닝 아트 탐색 요청
-     * @responsibility 주어진 좌표와 반경을 기준으로 주변에 위치한 런닝 아트를 탐색하여 반환합니다. 대용량 데이터 환경에서의 RDBMS 부하를 줄이기 위해 Redis 기반의 1차 필터링을 수행합니다.
-     * @implSpec 1. {@link RunningArtRedisPort#findNearbyIds(Double, Double, Double)}를 통해 Redis GEO 공간 인덱스에서 반경 내 데이터의 고유 ID 목록을 빠르게 조회합니다.<br>
-     * 2. 조회된 ID 목록이 존재할 경우, 블로킹 환경을 위한 {@link Schedulers#boundedElastic()} 스레드에서 {@link RunningArtRepositoryPort#findAllByIdIn(List)}를 호출하여 DB에서 상세 정보를 일괄(Batch) 페치합니다.
-     * @implNote Redis의 {@code GEOSEARCH}는 거리순 정렬을 제공하지만, RDBMS의 {@code IN} 쿼리는 식별자 순서를 보장하지 않습니다. 만약 클라이언트에게 엄격한 거리순 반환이 요구된다면, DB 조회 이후 스트림 내에서 반환된 리스트를 재정렬하는 로직이 추가되어야 합니다.
-     */
-    @Override
-    public Flux<RunningArtResult> getNearbyArts(Double lat, Double lon, Double radius) {
-        // 1. 반경 최대값 검증 (방어적 프로그래밍)
-        if (radius > maxRadius) {
-            return Flux.error(new ArtException(ArtErrorCode.INVALID_RADIUS));
-        }
-
-        return runningArtRedisPort.findNearbyIds(lat, lon, radius)
-                .take(maxResultLimit)
-                .collectList()
-                .filter(ids -> !ids.isEmpty())
-                .flatMapMany(ids ->
-                        Mono.fromCallable(() -> {
-                                    List<RunningArt> arts = repositoryPort.findAllByIdIn(ids);
-
-                                    Map<Long, RunningArt> artMap = arts.stream()
-                                            .collect(Collectors.toMap(
-                                                    RunningArt::id,
-                                                    Function.identity(),
-                                                    (existing, replacement) -> existing
-                                            ));
-
-                                    return ids.stream()
-                                            .map(artMap::get)
-                                            .filter(Objects::nonNull)
-                                            .map(RunningArtResult::toResult)
-                                            .toList();
-                                })
-                                .subscribeOn(Schedulers.boundedElastic())
-                                .flatMapIterable(Function.identity())
-                );
-    }
-
-    /**
-     * @responsibility 비동기 AI 작업이 완료된 후, 전달받은 GPX 데이터를 바탕으로 런닝아트를 생성하고 DB/Redis에 등록합니다.
-     */
-    @Override
-    @Transactional
-    public Long registerFromPolyline(Long userId, String polyline, String title, String shape, Proficiency proficiency) {
-
-        // 1. Polyline에서 메타데이터(시작 좌표, 거리 등) 추출
-        PolylineUtils.PolylineMetadata metadata = PolylineUtils.extractMetadata(polyline);
-
-        // 2. 도메인 엔티티 조립
-        RunningArt runningArt = RunningArt.builder()
-                .userId(userId)
-                .title(title)
-                .gpx(polyline) // 변수명은 gpx지만 실제론 polyline 데이터가 들어갑니다.
-                .content("AI 생성 런닝 아트")
-                .shape(shape)
-                .proficiency(proficiency)
-                .distance(metadata.totalDistanceMeters())
-                .startLat(metadata.startLat())
-                .startLon(metadata.startLon())
-                .build();
-
-        // 3. DB 저장 (JPA Blocking 방식)
-        RunningArt savedArt = repositoryPort.save(runningArt);
-        log.info("DB 런닝아트 저장 완료 (ArtId: {})", savedArt.id());
-
-        // 4. Redis 동기화 (기존 비동기 코드를 여기서만 살짝 block 해줍니다)
-        try {
-            runningArtRedisPort.saveLocation(savedArt.id(), savedArt.startLat(), savedArt.startLon())
-                    .block(); // ✨ SQS 리스너 워커 스레드이므로 block() 해도 전혀 문제없습니다!
-            log.info("Redis 동기화 완료 (ArtId: {})", savedArt.id());
-        } catch (Exception e) {
-            // Redis 저장이 실패해도 DB 저장을 롤백시키지 않으려면 try-catch로 감싸줍니다.
-            log.error("Redis GEO 동기화 실패 (ArtId={}): 나중에 배치로 복구해야 합니다.", savedArt.id(), e);
-        }
-
-        // 5. 최종 ID 반환!
-        return savedArt.id();
     }
 }

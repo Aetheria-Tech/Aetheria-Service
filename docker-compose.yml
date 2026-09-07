@@ -1,0 +1,76 @@
+# 로컬 개발·검증용 스택. 운영 인프라는 `infra/` 의 CDK 가 정의한다.
+#
+# 이 파일의 목적은 "ECS 에 올라갈 이미지와 똑같은 이미지를 로컬에서 띄워 보는 것" 이다.
+# 앱 컨테이너에는 .env 가 들어가지 않으므로(.dockerignore), 기본값 없는 플레이스홀더를
+# env_file 로 전부 주입한다. 접속 주소만 컨테이너 네트워크 기준으로 덮어쓴다.
+#
+#   docker compose up -d          # MySQL + Redis + 앱
+#   docker compose up -d mysql redis   # 인프라만 (gradlew bootRun / integrationTest 용)
+
+services:
+  mysql:
+    # 운영 RDS 가 MysqlEngineVersion.VER_8_0 이다(infra/lib/data-stack.ts).
+    # `mysql:8` 태그는 8.4 를 끌어와 Flyway 가 "지원 검증되지 않은 버전" 경고를 낸다. 8.0 으로 맞춘다.
+    image: mysql:8.0
+    container_name: aetheria-mysql
+    environment:
+      # .env 의 DATABASE_PASSWORD 와 같아야 한다.
+      MYSQL_ROOT_PASSWORD: letmein
+      # Flyway 는 스키마(DB) 자체를 만들지 않는다. 빈 스키마를 여기서 미리 만들어 준다.
+      # 이름은 .env 의 DATABASE_URL 이 가리키는 것과 같아야 한다.
+      MYSQL_DATABASE: webflux
+    ports:
+      # 호스트 3306 은 Windows 서비스로 도는 네이티브 mysqld 가 이미 쓰고 있다.
+      # 그쪽을 건드리지 않으려고 3307 로 내보낸다. 앱 컨테이너는 compose 네트워크에서
+      # mysql:3306 으로 붙으므로 이 매핑과 무관하다. (호스트에서 들여다볼 때만 3307)
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pletmein"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    container_name: aetheria-redis
+    ports:
+      # 호스트 6379 도 네이티브 redis-server 가 127.0.0.1 에 물려 있어, 같은 포트로 내보내면
+      # 호스트에서 localhost:6379 로 붙었을 때 어느 쪽인지 알 수 없게 된다. 6380 으로 분리한다.
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build: .
+    image: aetheria-backend:local
+    container_name: aetheria-backend
+    # .env 로 나머지 플레이스홀더(JWT/카카오/구글/암호화 키/레이트리밋 등)를 공급한다.
+    env_file:
+      - .env
+    environment:
+      # local 프로파일에서만 FakeS3Adapter / MockS3AiOutputAdapter / FakeSageMakerAdapter 가
+      # @Primary 로 붙는다. 덕분에 AWS 자격증명 없이 기동된다.
+      SPRING_PROFILES_ACTIVE: local
+      # .env 의 localhost 는 컨테이너 안에서 자기 자신을 가리킨다. 서비스 이름으로 덮어쓴다.
+      DATABASE_URL: jdbc:mysql://mysql:3306/webflux?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # SQS 폴링을 끈다. 켜 두면 자격증명이 없어 GetQueueUrl 에서 기동이 중단된다.
+      # (io.awspring.cloud.sqs.QueueAttributesResolvingException → SdkClientException)
+      AWS_SQS_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75.0
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql-data:

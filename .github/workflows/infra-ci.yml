@@ -1,0 +1,59 @@
+# 인프라(CDK) 검증 워크플로우
+#
+# 앱 배포(deploy.yml)와 트리거를 나눠 둔다. 여기는 인프라만, 저기는 앱만 본다.
+#
+# `cdk synth` 는 일부러 넣지 않았다. test/aetheria-cdk.test.ts 의 synth() 헬퍼가 이미
+# 4개 스택을 전부 Template.fromStack 으로 합성하므로 커버리지가 겹치고,
+# cdk synth 는 계정이 잡히면 AZ 컨텍스트 조회를 시도해 자격증명이 없는 러너에서 실패할 수 있다.
+# jest 경로는 자격증명 없이 도는 것이 확인되어 있다.
+
+name: Infra CI
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-ci.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Type-check and test CDK stacks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      # package-lock.json 을 그대로 따르도록 install 이 아니라 ci 를 쓴다.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Run CDK assertions
+        run: npm test

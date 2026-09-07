@@ -2,6 +2,7 @@ package com.serverbe;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,6 +15,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/*
+ * 실제 MySQL과 Redis에 접속해 블랙리스트 조회 성능을 비교하는 테스트.
+ * 기본 `gradlew test` 에서는 제외되며 `gradlew integrationTest` 로만 실행됩니다.
+ */
+@Tag("integration")
 @SpringBootTest
 class BlacklistPerformanceTest {
 

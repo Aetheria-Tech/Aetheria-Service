@@ -3,7 +3,6 @@ package com.serverbe.adapter.out.external.google;
 import com.serverbe.adapter.out.external.google.dto.GoogleTokenResponse;
 import com.serverbe.adapter.out.external.google.dto.GoogleUserInfoResponse;
 import com.serverbe.application.port.out.dto.oauth.OAuthUserInfoResult;
-import com.serverbe.application.port.out.dto.oauth.SocialTokenRefreshResult;
 import com.serverbe.application.port.out.oauth.OAuthClientPort;
 import com.serverbe.domain.exception.external.ExternalApiClientException;
 import com.serverbe.domain.exception.external.ExternalApiErrorCode;
@@ -161,37 +160,8 @@ public class GoogleOAuthAdapter implements OAuthClientPort {
     }
 
     @Override
-    public Mono<SocialTokenRefreshResult> refreshSocialToken(OAuthProvider provider, String refreshToken) {
-        MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
-        formData.add("grant_type", "refresh_token");
-        formData.add("client_id", clientId);
-        formData.add("client_secret", clientSecret);
-        formData.add("refresh_token", refreshToken);
-
-        return webClient.post()
-                .uri(oauthUrl + "/token")
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(BodyInserters.fromFormData(formData))
-                .retrieve()
-                .onStatus(HttpStatusCode::is4xxClientError, res -> res.bodyToMono(String.class)
-                        .flatMap(body -> {
-                            log.warn("Google Token Refresh API Client Error (4xx): status={}, body={}", res.statusCode(), body);
-                            return Mono.error(new ExternalApiClientException(ExternalApiErrorCode.FAILED_SOCIAL_API, "잘못된 토큰 갱신 요청입니다.: " + body));
-                        }))
-                .onStatus(HttpStatusCode::is5xxServerError, res -> res.bodyToMono(String.class)
-                        .flatMap(body -> {
-                            log.error("Google Token Refresh API Server Error (5xx): status={}, body={}", res.statusCode(), body);
-                            return Mono.error(new ExternalApiException(ExternalApiErrorCode.FAILED_SOCIAL_API, "Google 서버 에러: " + body));
-                        }))
-                .bodyToMono(SocialTokenRefreshResult.class)
-                .timeout(Duration.ofSeconds(2))
-                .transformDeferred(CircuitBreakerOperator.of(googleTokenCircuitBreaker))
-                .onErrorResume(throwable -> fallbackHandler.fallbackRefreshSocialToken(provider, refreshToken, throwable));
-    }
-
-    @Override
-    public boolean supports(OAuthProvider provider) {
-        return provider == OAuthProvider.GOOGLE;
+    public OAuthProvider provider() {
+        return OAuthProvider.GOOGLE;
     }
 
     @Override

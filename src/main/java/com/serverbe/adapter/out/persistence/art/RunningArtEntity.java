@@ -15,7 +15,15 @@ import java.time.LocalDateTime;
 
 @Entity
 @Getter
-@Table(name = "running_arts")
+@Table(
+        name = "running_arts",
+        indexes = {
+                // findByUser_Id / findIdsByUserId / deleteByUserId 가 전부 user_id 로 필터링합니다.
+                // 이름을 명시해 두지 않으면 InnoDB 가 FK 제약 이름으로 인덱스를 자동 생성해,
+                // 환경마다 이름이 갈립니다. (V5 가 기존 DB 의 이름을 이 표준으로 수렴시켰습니다)
+                @Index(name = "idx_running_arts_user", columnList = "user_id")
+        }
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @EntityListeners(AuditingEntityListener.class)
 public class RunningArtEntity {
@@ -60,7 +68,7 @@ public class RunningArtEntity {
 
     // 연관관계 설정 (주인)
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", foreignKey = @ForeignKey(name = "fk_running_arts_user"))
     private UserEntity user;
 
     @Builder

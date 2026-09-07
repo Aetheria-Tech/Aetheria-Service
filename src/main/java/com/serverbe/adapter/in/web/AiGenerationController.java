@@ -2,10 +2,10 @@ package com.serverbe.adapter.in.web;
 
 import com.serverbe.adapter.in.web.dto.art.CreateRunningArtRequest;
 import com.serverbe.adapter.in.web.dto.task.TaskStatusResponse;
+import com.serverbe.adapter.in.web.response.RestApiResponse;
 import com.serverbe.application.port.in.art.InitiateAiGenerationUseCase;
 import com.serverbe.application.port.in.task.GetTaskStatusUseCase;
 import com.serverbe.domain.model.address.Address;
-import com.serverbe.infrastructure.common.response.RestApiResponse;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +37,7 @@ public class AiGenerationController {
     ) {
         return ResponseEntity.ok(
                 RestApiResponse.success(
-                        getTaskStatusUseCase.getTaskStatus(taskId, userId)
+                        TaskStatusResponse.from(getTaskStatusUseCase.getTaskStatus(taskId, userId))
                 )
         );
     }
@@ -57,7 +57,6 @@ public class AiGenerationController {
                         request.proficiency()
                 )
                 .subscribeOn(Schedulers.boundedElastic())
-                // 2. HTTP Header(201 Created)와 Body(RestApiResponse)를 명시적으로 결합!
                 .map(taskId ->
                         ResponseEntity
                                 .status(HttpStatus.CREATED)

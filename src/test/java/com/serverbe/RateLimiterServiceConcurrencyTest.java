@@ -4,6 +4,7 @@ import com.serverbe.application.service.RateLimiterService;
 import com.serverbe.infrastructure.config.properties.RateLimitProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,6 +17,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/*
+ * 실제 Redis에 접속해 Lua 토큰 버킷의 동시성 정확도를 검증하는 테스트.
+ * 기본 `gradlew test` 에서는 제외되며 `gradlew integrationTest` 로만 실행됩니다.
+ */
+@Tag("integration")
 @SpringBootTest
 class RateLimiterServiceConcurrencyTest {
 

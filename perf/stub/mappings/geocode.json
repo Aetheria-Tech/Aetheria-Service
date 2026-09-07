@@ -1,0 +1,30 @@
+{
+  "name": "kakao-geocode-500ms",
+  "metadata": {
+    "purpose": "카카오 지오코딩 응답을 흉내 내는 스텁. /bench/reactive, /bench/blocking, 상용 GET /api/v1/geocode 가 이 매핑 하나를 함께 쓴다 - 세 경로의 외부 조건을 동일하게 두기 위해서다.",
+    "delayRationale": "지연 500ms 의 근거는 docs/benchmark/01-thread-occupancy.md 에 적어 두었다. 여기서 값을 바꾸면 그 문서의 측정 조건도 함께 고쳐야 한다."
+  },
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/v2/local/search/address.json"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 500,
+    "headers": {
+      "Content-Type": "application/json;charset=UTF-8"
+    },
+    "jsonBody": {
+      "documents": [
+        {
+          "address_name": "서울특별시 강남구 테헤란로 427",
+          "x": "127.0276368",
+          "y": "37.5065003"
+        }
+      ],
+      "meta": {
+        "total_count": 1
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 package com.serverbe.application.port.in.task;
 
-import com.serverbe.adapter.in.web.dto.task.TaskStatusResponse;
+import com.serverbe.application.port.in.dto.task.TaskStatusResult;
 
 /**
  * AI 생성 작업의 현재 진행 상태를 조회하는 유스케이스 (Inbound Port).
@@ -16,7 +16,7 @@ public interface GetTaskStatusUseCase {
      *
      * @param taskId 조회할 AI 작업의 고유 ID
      * @param userId 조회를 요청한 사용자의 ID (타인 작업 조회 방지를 위한 권한 검증용)
-     * @return 작업의 현재 상태 정보를 담은 응답 DTO
+     * @return 작업의 현재 상태 정보를 담은 애플리케이션 계층의 결과 객체
      */
-    TaskStatusResponse getTaskStatus(String taskId, Long userId);
+    TaskStatusResult getTaskStatus(String taskId, Long userId);
 }

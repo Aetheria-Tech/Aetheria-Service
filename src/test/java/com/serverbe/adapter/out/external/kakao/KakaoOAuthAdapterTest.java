@@ -71,8 +71,10 @@ class KakaoOAuthAdapterTest {
         CircuitBreakerRegistry testRegistry = CircuitBreakerRegistry.of(testConfig);
 
         // 필드에서 상태를 검증하기 위해, 어댑터가 사용할 서킷 브레이커를 여기서 미리 꺼내어 동기화합니다.
-        // (만약 어댑터에서 다른 이름을 썼다면 여기 이름도 똑같이 맞춰주세요. 예: "kakaoOAuthApi")
-        this.kakaoCircuitBreaker = testRegistry.circuitBreaker("kakaoApi");
+        // 참고: KakaoOAuthAdapter는 "kakaoTokenApi"(토큰 발급)와 "kakaoUserInfoApi"(유저 정보 조회)
+        // 서킷 브레이커를 각각 따로 등록합니다. circuitBreaker_Opens_And_Triggers_Fallback 테스트는
+        // 토큰 발급 단계에서 500 에러를 일으키므로 "kakaoTokenApi"를 관찰해야 합니다.
+        this.kakaoCircuitBreaker = testRegistry.circuitBreaker("kakaoTokenApi");
 
         kakaoOAuthAdapter = new KakaoOAuthAdapter(
                 fallbackHandler,

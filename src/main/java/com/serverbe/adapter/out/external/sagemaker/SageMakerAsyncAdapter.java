@@ -27,14 +27,19 @@ public class SageMakerAsyncAdapter implements SageMakerAsyncPort {
     }
 
     /**
+     * @param taskId     우리 시스템의 Task ID. {@code inferenceId}로 함께 실어 보냅니다.
      * @param inputS3Uri S3에 업로드된 요청 데이터의 URI
      * @return 추후 결과물이 저장될 S3 Output URI (SageMaker가 응답으로 알려줌)
      * @implNote 비동기 호출이므로 결과를 기다리지 않고 HTTP 202 Accepted 수준의 응답만 즉시 리턴받습니다.
+     * @implSpec {@code inferenceId}를 명시적으로 지정하는 이유는, SageMaker가 이 값을 <b>완료 알림과 실패 알림 모두에</b>
+     * 그대로 되돌려주기 때문입니다. 실패 알림에는 결과물 S3 경로가 없을 수 있어 경로 파싱만으로는 대상 작업을
+     * 특정할 수 없고, 그 경우 추론 실패가 DB에 기록되지 못한 채 메시지가 DLQ로 빠집니다.
      */
     @Override
-    public String invokeAsync(String inputS3Uri) {
+    public String invokeAsync(String taskId, String inputS3Uri) {
         InvokeEndpointAsyncRequest request = InvokeEndpointAsyncRequest.builder()
                 .endpointName(endpointName)
+                .inferenceId(taskId) // 콜백에서 대상 작업을 특정하기 위한 식별자
                 .inputLocation(inputS3Uri) // 읽어야 할 S3 경로
                 .contentType("application/json") // S3에 있는 파일의 타입
                 .build();

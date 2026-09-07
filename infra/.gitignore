@@ -1,0 +1,15 @@
+*.js
+!jest.config.js
+*.d.ts
+node_modules
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
+# CDK context lookup cache (AWS 계정 ID 가 들어간다)
+cdk.context.json
+
+# 설계 브리프(작업용 메모). 저장소에 공개하지 않고 로컬에만 둔다.
+# 현재 상태의 정확한 기술은 README.md 와 docs/architecture.md 가 담당한다.
+CLAUDE.md

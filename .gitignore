@@ -4,7 +4,19 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
-.env
+# .env 하나만 적으면 .env.local / .env.prod 같은 변형이 그대로 커밋된다.
+# 공개 저장소에서 가장 흔한 사고 경로라 접두사 전체를 막고 예시 파일만 되살린다.
+.env*
+!.env.example
+
+### 키 · 인증서 — 저장소에 들어올 이유가 없는 확장자를 미리 막는다 ###
+*.pem
+*.p12
+*.jks
+*.keystore
+*.key
+*.pfx
+id_rsa*
 
 ### STS ###
 .apt_generated
@@ -14,7 +26,10 @@ build/
 .settings
 .springBeans
 .sts4-cache
-bin/
+# 앵커(/)를 반드시 유지한다. `bin/` 으로 두면 깊이에 상관없이 모든 bin 디렉터리에 걸려
+# infra/bin/aetheria-cdk.ts (CDK 앱 진입점)까지 커밋에서 빠지고, 그러면 clone 한 곳에서
+# cdk synth 자체가 불가능해진다. Eclipse 산출물은 저장소 루트에만 생긴다.
+/bin/
 !**/src/main/**/bin/
 !**/src/test/**/bin/
 
@@ -36,3 +51,12 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### QueryDSL (IDE 생성물 - Gradle 은 build/generated 를 사용) ###
+src/main/generated/
+
+### 부하 측정 결과물 (원본 CSV·HTML 리포트) ###
+# 요약 표와 그래프만 docs/benchmark/ 에 커밋한다. 원본은 회차마다 수십 MB 라 저장소에 넣지 않는다.
+perf/**/results/
+# JMeter 는 실행 디렉터리에 로그를 남긴다. 저장소 루트에서 돌리면 여기에 떨어진다.
+jmeter.log

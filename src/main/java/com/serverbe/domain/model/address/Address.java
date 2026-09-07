@@ -2,7 +2,6 @@ package com.serverbe.domain.model.address;
 
 import com.serverbe.domain.exception.external.ExternalApiErrorCode;
 import com.serverbe.domain.exception.external.ExternalApiException;
-import org.springframework.util.StringUtils;
 
 import java.util.regex.Pattern;
 
@@ -22,7 +21,7 @@ public record Address(String value) {
     }
 
     private void validate(String address) {
-        if (!StringUtils.hasText(address)) {
+        if (address == null || address.isBlank()) {
             throw new ExternalApiException(ExternalApiErrorCode.INVALID_ADDRESS, "주소를 입력해주세요.");
         }
 

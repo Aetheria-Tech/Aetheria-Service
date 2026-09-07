@@ -16,7 +16,11 @@ import java.util.List;
 
 @Entity
 @Table(name = "users", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"oauth_id", "provider"})
+        // (oauth_id, oauth_provider) 는 소셜 계정의 자연키입니다.
+        // columnNames 는 자바 필드명이 아니라 물리 컬럼명을 받습니다. 여기에 필드명 "provider" 를 적으면
+        // 어떤 컬럼도 가리키지 못해 제약이 만들어지지 않고, ddl-auto: validate 는 유니크 인덱스를 검증하지
+        // 않으므로 기동 시점에도 드러나지 않습니다. 실제 인덱스는 V3 마이그레이션이 같은 이름으로 생성합니다.
+        @UniqueConstraint(name = "uk_users_oauth", columnNames = {"oauth_id", "oauth_provider"})
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

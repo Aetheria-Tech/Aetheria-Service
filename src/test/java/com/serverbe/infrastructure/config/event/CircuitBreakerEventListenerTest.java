@@ -1,7 +1,7 @@
 package com.serverbe.infrastructure.config.event;
 
 import com.github.benmanes.caffeine.cache.Cache;
-import com.serverbe.application.service.NotificationService;
+import com.serverbe.application.port.out.notification.AlertNotificationPort;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,7 +19,7 @@ import static org.mockito.Mockito.*;
 class CircuitBreakerEventListenerTest {
 
     @Mock
-    private NotificationService notificationService;
+    private AlertNotificationPort alertNotificationPort;
 
     private CircuitBreakerEventListener eventListener;
     private CircuitBreakerRegistry circuitBreakerRegistry;
@@ -31,7 +31,7 @@ class CircuitBreakerEventListenerTest {
     @BeforeEach
     void setUp() {
         circuitBreakerRegistry = CircuitBreakerRegistry.ofDefaults();
-        eventListener = new CircuitBreakerEventListener(circuitBreakerRegistry, localRateLimitCache, notificationService);
+        eventListener = new CircuitBreakerEventListener(circuitBreakerRegistry, localRateLimitCache, alertNotificationPort);
         eventListener.registerEventListener();
         circuitBreaker = circuitBreakerRegistry.circuitBreaker("redisRateLimit");
     }
@@ -43,7 +43,7 @@ class CircuitBreakerEventListenerTest {
         circuitBreaker.transitionToClosedState();
 
         verify(localRateLimitCache, times(1)).invalidateAll();
-        verify(notificationService, times(1)).sendDiscordNotification(contains("복구"));
+        verify(alertNotificationPort, times(1)).sendAlert(contains("복구"));
     }
 
     @Test
@@ -52,18 +52,18 @@ class CircuitBreakerEventListenerTest {
         circuitBreaker.transitionToOpenState();
 
         verify(localRateLimitCache, never()).invalidateAll();
-        verify(notificationService, times(1)).sendDiscordNotification(contains("장애"));
+        verify(alertNotificationPort, times(1)).sendAlert(contains("장애"));
     }
 
     @Test
     @DisplayName("서킷 브레이커가 HALF_OPEN(반오픈) 상태로 전환될 때는 아무 일도 하지 않는다")
     void shouldDoNothing_whenStateTransitionsToHalfOpen() {
         circuitBreaker.transitionToOpenState();
-        clearInvocations(notificationService);
+        clearInvocations(alertNotificationPort);
 
         circuitBreaker.transitionToHalfOpenState();
 
         verify(localRateLimitCache, never()).invalidateAll();
-        verify(notificationService, never()).sendDiscordNotification(anyString());
+        verify(alertNotificationPort, never()).sendAlert(anyString());
     }
 }

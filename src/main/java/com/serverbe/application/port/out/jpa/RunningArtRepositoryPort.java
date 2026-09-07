@@ -3,8 +3,8 @@ package com.serverbe.application.port.out.jpa;
 import com.serverbe.application.port.in.dto.art.RunningArtLocationDto;
 import com.serverbe.application.port.in.dto.art.RunningArtUpdateCommand;
 import com.serverbe.domain.model.art.RunningArt;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import com.serverbe.application.port.dto.PageQuery;
+import com.serverbe.application.port.dto.PageResult;
 
 import java.util.List;
 import java.util.Optional;
@@ -30,17 +30,12 @@ public interface RunningArtRepositoryPort {
     Optional<RunningArt> findById(Long id);
 
     /**
-     * @responsibility 특정 사용자가 소유한 모든 런닝아트 목록을 조회합니다.
-     * @param userId 조회의 기준이 되는 사용자의 고유 식별자
-     * @return 해당 사용자와 연관된 {@link List} 형태의 {@link RunningArt} 목록
+     * @responsibility 특정 사용자가 소유한 런닝아트 목록을 페이지 단위로 조회합니다.
+     * @param userId    조회의 기준이 되는 사용자의 고유 식별자
+     * @param pageQuery 페이징·정렬 정보
+     * @return 해당 사용자와 연관된 {@link RunningArt} 페이지
      */
-    Page<RunningArt> findByUserId(Long userId, Pageable pageable);
-
-    /**
-     * @responsibility 시스템에 저장된 모든 런닝아트 목록을 조회합니다.
-     * @return 저장된 전체 {@link RunningArt} 모델을 포함하는 {@link List}
-     */
-    Page<RunningArt> findAll(Pageable pageable);
+    PageResult<RunningArt> findByUserId(Long userId, PageQuery pageQuery);
 
     /**
      * @responsibility 고유 식별자를 기준으로 특정 런닝아트 데이터를 영구 삭제합니다.

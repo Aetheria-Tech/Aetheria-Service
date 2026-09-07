@@ -1,9 +1,8 @@
 package com.serverbe.adapter.in.web;
 
 import com.serverbe.adapter.in.web.dto.geocode.GeocodeResponse;
-import com.serverbe.application.port.out.geocode.GeocodePort;
-import com.serverbe.domain.model.address.Address;
-import com.serverbe.infrastructure.common.response.RestApiResponse;
+import com.serverbe.adapter.in.web.response.RestApiResponse;
+import com.serverbe.application.port.in.geocode.GeocodeAddressUseCase;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -16,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 @Tag(name = "Geocode", description = "주소 및 위치 관련 API")
 @RestController
@@ -24,7 +22,7 @@ import reactor.core.scheduler.Schedulers;
 @RequiredArgsConstructor
 public class GeocodeController {
 
-    private final GeocodePort geocodePort;
+    private final GeocodeAddressUseCase geocodeAddressUseCase;
 
     @Operation(
             summary = "주소를 위경도로 변환 (지오코딩)",
@@ -44,10 +42,8 @@ public class GeocodeController {
             @Parameter(description = "변환할 도로명 또는 지번 주소", example = "서울특별시 강남구 테헤란로 427", required = true)
             @RequestParam(name = "address") @NotBlank String address
     ) {
-        new Address(address); // 유효성 검사 수행
-
-        // 비동기 체인 유지 + ResponseEntity로 200 OK 헤더 명시
-        return geocodePort.geocode(address)
+        // 비동기 체인 유지 + ResponseEntity로 200 OK 헤더 명시 (주소 유효성 검증은 UseCase 내부에서 수행)
+        return geocodeAddressUseCase.geocode(address)
                 .map(GeocodeResponse::toResponse)
                 .map(response -> ResponseEntity.ok(RestApiResponse.success(response)));
     }

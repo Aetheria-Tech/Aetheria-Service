@@ -1,8 +1,8 @@
 package com.serverbe.infrastructure.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.serverbe.adapter.in.web.response.RestApiResponse;
 import com.serverbe.domain.exception.auth.AuthErrorCode;
-import com.serverbe.infrastructure.common.response.RestApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;

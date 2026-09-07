@@ -1,6 +1,5 @@
 package com.serverbe.domain.model.user;
 
-import com.serverbe.application.port.out.dto.oauth.OAuthUserInfoResult;
 import com.serverbe.domain.model.user.vo.OAuthProvider;
 import com.serverbe.domain.model.user.vo.Role;
 
@@ -28,24 +27,6 @@ public record User(
         String oauthRefreshToken
 ) {
     /**
-     * @responsibility 소셜 서비스의 리프레시 토큰을 갱신한 새로운 유저 객체를 반환합니다.
-     * @param newToken 새로 발급받은 소셜 리프레시 토큰
-     * @return 토큰이 갱신된 {@link User} 인스턴스
-     */
-    public User renewOauthRefreshToken(String newToken) {
-        return new User(
-                this.id,
-                this.oauthId,
-                this.provider,
-                this.email,
-                this.nickname,
-                this.role,
-                this.statusMessage,
-                newToken
-        );
-    }
-
-    /**
      * @responsibility Spring Security 등 인증 프레임워크와의 호환을 위해 권한 리스트를 반환합니다.
      * @return 사용자의 권한 명칭 리스트
      */
@@ -55,38 +36,46 @@ public record User(
 
     /**
      * @responsibility <b>신규 가입</b>을 위한 유저 객체를 생성하는 정적 팩토리 메서드입니다.
-     * @param oauthInfo OAuth 서버로부터 획득한 사용자 정보 {@link OAuthUserInfoResult}
+     * @param oauthId 소셜 서비스에서 발급한 사용자의 고유 식별자
      * @param provider 소셜 로그인 제공자
+     * @param email 사용자 이메일
+     * @param nickname 사용자 닉네임
+     * @param oauthRefreshToken 외부 소셜 서비스의 리프레시 토큰
      * @return 기본 권한(USER)이 부여된 신규 {@link User} 객체
+     * @implNote 도메인 계층이 애플리케이션 계층의 DTO(예: OAuth 응답 객체)에 의존하지 않도록,
+     * 원시 값들을 개별 파라미터로 전달받습니다. 호출자(애플리케이션 서비스)가 외부 응답 객체에서
+     * 필요한 값을 추출해 전달할 책임을 집니다.
      */
-    public static User createNew(OAuthUserInfoResult oauthInfo, OAuthProvider provider) {
+    public static User createNew(String oauthId, OAuthProvider provider, String email, String nickname, String oauthRefreshToken) {
         return new User(
                 null,
-                oauthInfo.oauthId(),
+                oauthId,
                 provider,
-                oauthInfo.email(),
-                oauthInfo.nickname(),
+                email,
+                nickname,
                 Role.USER,
                 null,
-                oauthInfo.oauthRefreshToken()
+                oauthRefreshToken
         );
     }
 
     /**
      * @responsibility 외부 소셜 서비스의 최신 정보를 반영하여 유저 객체를 업데이트합니다.
-     * @param oauthInfo 갱신된 소셜 사용자 정보 {@link OAuthUserInfoResult}
+     * @param email 갱신할 사용자 이메일
+     * @param nickname 갱신할 사용자 닉네임
+     * @param oauthRefreshToken 갱신할 외부 소셜 서비스의 리프레시 토큰
      * @return 정보가 동기화된 새로운 {@link User} 객체
      */
-    public User updateFromOAuth(OAuthUserInfoResult oauthInfo) {
+    public User updateFromOAuth(String email, String nickname, String oauthRefreshToken) {
         return new User(
                 this.id,
                 this.oauthId,
                 this.provider,
-                oauthInfo.email(),
-                oauthInfo.nickname(),
+                email,
+                nickname,
                 this.role,
                 this.statusMessage,
-                oauthInfo.oauthRefreshToken()
+                oauthRefreshToken
         );
     }
 

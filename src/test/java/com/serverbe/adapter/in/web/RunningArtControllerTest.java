@@ -23,10 +23,11 @@ class RunningArtControllerTest {
     private WebTestClient webTestClient; // 비동기 논블로킹 API 테스트를 위한 클라이언트
 
     // 컨트롤러가 의존하는 모든 UseCase를 가짜(Mock) 객체로 주입
+    // 참고: 런닝 아트 생성은 더 이상 이 컨트롤러가 아닌 AI 생성 파이프라인(AiGenerationController)이 담당하므로
+    // CreateRunningArtUseCase는 RunningArtController의 의존성에서 제외되었습니다.
     @MockitoBean private GetRunningArtUseCase getRunningArtUseCase;
     @MockitoBean private DeleteRunningArtUseCase deleteRunningArtUseCase;
     @MockitoBean private UpdateRunningArtUseCase updateRunningArtUseCase;
-    @MockitoBean private CreateRunningArtUseCase createRunningArtUseCase;
     @MockitoBean private GetNearbyRunningArtUseCase getNearbyRunningArtUseCase;
 
     @Test
@@ -40,7 +41,7 @@ class RunningArtControllerTest {
                 "댕댕런 하트 코스",
                 "설명입니다",
                 "HEART",
-                Proficiency.MASTER,
+                Proficiency.EXPERT, // 참고: Proficiency enum에 MASTER는 존재하지 않아 EXPERT(최고 등급)로 대체
                 "gpx_data_...",
                 100L
         );

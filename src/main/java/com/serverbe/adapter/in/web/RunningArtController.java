@@ -1,11 +1,13 @@
 package com.serverbe.adapter.in.web;
 
 import com.serverbe.adapter.in.web.dto.art.CreateRunningArtRequest;
+import com.serverbe.adapter.in.web.support.PageQueryMapper;
+import com.serverbe.application.port.dto.PageResult;
 import com.serverbe.adapter.in.web.dto.art.RunningArtResponse;
 import com.serverbe.application.annotation.RateLimit;
 import com.serverbe.application.port.in.art.*;
 import com.serverbe.adapter.in.web.dto.art.UpdateRunningArtRequest;
-import com.serverbe.infrastructure.common.response.RestApiResponse;
+import com.serverbe.adapter.in.web.response.RestApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -56,10 +58,12 @@ public class RunningArtController {
             @Parameter(hidden = true) @AuthenticationPrincipal Long userId,
             @ParameterObject Pageable pageable
     ) {
-        return ResponseEntity.ok(RestApiResponse.success(
-                getRunningArtUseCase.getRunningArtsByUserId(userId, pageable)
-                        .map(RunningArtResponse::toResponse)
-        ));
+        PageResult<RunningArtResponse> result = getRunningArtUseCase
+                .getRunningArtsByUserId(userId, PageQueryMapper.toPageQuery(pageable))
+                .map(RunningArtResponse::toResponse);
+
+        // 응답 JSON 형태를 바꾸지 않기 위해 Spring Data의 Page로 다시 감싼다. (PageQueryMapper 참고)
+        return ResponseEntity.ok(RestApiResponse.success(PageQueryMapper.toPage(result, pageable)));
     }
 
     @Operation(

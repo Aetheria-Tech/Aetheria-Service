@@ -1,7 +1,7 @@
 package com.serverbe.adapter.out.external.kakao;
 
+import com.serverbe.domain.exception.external.ExternalApiClientException;
 import com.serverbe.domain.exception.external.ExternalApiErrorCode;
-import com.serverbe.domain.exception.external.ExternalApiException;
 import com.serverbe.infrastructure.config.properties.KakaoProperties;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
@@ -142,8 +142,8 @@ class KakaoGeocodeAdapterTest {
         // then
         StepVerifier.create(resultMono)
                 .expectErrorMatches(throwable ->
-                        throwable instanceof ExternalApiException &&
-                                ((ExternalApiException) throwable).getErrorCode() == ExternalApiErrorCode.INVALID_ADDRESS &&
+                        throwable instanceof ExternalApiClientException &&
+                                ((ExternalApiClientException) throwable).getErrorCode() == ExternalApiErrorCode.INVALID_ADDRESS &&
                                 throwable.getMessage().contains("검색 결과가 없습니다"))
                 .verify();
     }
@@ -162,8 +162,8 @@ class KakaoGeocodeAdapterTest {
         // then
         StepVerifier.create(resultMono)
                 .expectErrorMatches(throwable ->
-                        throwable instanceof ExternalApiException &&
-                                ((ExternalApiException) throwable).getErrorCode() == ExternalApiErrorCode.INVALID_ADDRESS &&
+                        throwable instanceof ExternalApiClientException &&
+                                ((ExternalApiClientException) throwable).getErrorCode() == ExternalApiErrorCode.INVALID_ADDRESS &&
                                 throwable.getMessage().contains("잘못된 주소로 요청"))
                 .verify();
     }

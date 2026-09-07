@@ -1,22 +1,21 @@
 package com.serverbe.application.port.in.notification;
 
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import com.serverbe.application.port.in.dto.task.TaskSubscription;
 
 /**
- * 클라이언트의 실시간 SSE(Server-Sent Events) 구독 요청을 처리하는 유스케이스 (Inbound Port).
- * <p>
- * 사용자가 AI 작업 생성을 요청한 직후, 해당 작업의 진행 상태 및 완료 여부를
- * 실시간으로 푸시(Push) 받기 위해 서버와 단방향 연결을 맺는 진입점입니다.
- * </p>
+ * @responsibility AI 작업 상태 구독 요청의 <b>인가</b>를 담당하는 인바운드 포트입니다.
+ * @implSpec 반환값은 인가 결과와 현재 상태 스냅샷입니다. 실제 연결 수립(SSE, WebSocket 등)은
+ * 인바운드 어댑터의 몫이며, 이 포트는 전송 기술을 알지 않습니다.
+ * @implNote 이전에는 {@code SseEmitter}(spring-webmvc)를 반환해 애플리케이션 계층이 서블릿 웹
+ * 기술에 묶여 있었습니다.
  */
 public interface SseSubscribeUseCase {
 
     /**
-     * 특정 AI 작업에 대한 SSE 구독(연결)을 생성하고 권한을 검증합니다.
-     *
      * @param userId 구독을 요청하는 사용자의 ID (소유권 검증용)
      * @param taskId 실시간 알림을 수신할 AI 작업의 고유 ID
-     * @return 클라이언트와 연결된 통로인 {@link SseEmitter} 객체
+     * @return 인가된 구독 정보와 현재 상태 스냅샷
+     * @throws com.serverbe.domain.exception.ai.AiException 작업이 없거나 요청자가 소유자가 아닌 경우
      */
-    SseEmitter subscribe(Long userId, String taskId);
+    TaskSubscription subscribe(Long userId, String taskId);
 }

@@ -11,4 +11,6 @@ public interface TaskQueryPort {
     Optional<AiTask> findById(String taskId);
     List<AiTask> findZombieTasks(List<TaskStatus> statuses, LocalDateTime threshold);
     List<AiTask> findAllByStatus(TaskStatus status);
+    Optional<AiTask> findByIdForUpdate(String taskId);
+    boolean existsActiveTaskByUserId(Long userId); // 진행 중인 작업 존재 여부 확인
 }

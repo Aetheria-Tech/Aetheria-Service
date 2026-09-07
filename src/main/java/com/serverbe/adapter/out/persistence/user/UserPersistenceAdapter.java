@@ -2,6 +2,8 @@ package com.serverbe.adapter.out.persistence.user;
 
 import com.serverbe.adapter.out.persistence.mapper.UserMapper;
 import com.serverbe.application.port.out.jpa.UserRepositoryPort;
+import com.serverbe.domain.exception.server.DataIntegrityViolationException;
+import com.serverbe.domain.exception.server.ServerErrorCode;
 import com.serverbe.domain.model.user.User;
 import com.serverbe.domain.model.user.vo.OAuthProvider;
 import com.serverbe.infrastructure.crypto.EncryptionContext;
@@ -50,14 +52,29 @@ public class UserPersistenceAdapter implements UserRepositoryPort {
     /**
      * @param user 저장할 {@link User} 도메인 모델
      * @return 저장 및 식별자 할당이 완료된 {@link User} 도메인 모델
-     * @responsibility 유저 도메인 모델을 영구 저장소에 저장합니다.
+     * @responsibility 유저 도메인 모델을 영구 저장소에 저장하고, DB 제약 위반을 도메인 예외로 <b>번역</b>합니다.
      * @implSpec 엔티티로 변환되는 과정에서 JPA AttributeConverter(CryptoConverter)에 의해 민감 정보가 자동 암호화됩니다.
+     * @implNote 유니크 제약 위반을 도메인 언어로 옮기는 것은 <b>영속성 어댑터의 몫</b>입니다. 스프링의
+     * {@code DataIntegrityViolationException}이 애플리케이션 계층까지 올라가면 그 계층이 프레임워크를 알게 되고,
+     * 도메인에 이름이 같은 예외가 있어 <b>어느 쪽인지 import를 봐야만 알 수 있게</b> 됩니다.
+     * @implNote {@link UserEntity}의 식별자가 {@code IDENTITY} 전략이라 {@code persist} 시점에 INSERT가 즉시
+     * 실행됩니다. 덕분에 제약 위반이 커밋까지 미뤄지지 않고 <b>이 메서드 안에서</b> 잡힙니다.
+     * @implNote 스프링 예외를 import하지 않고 catch 절에 패키지 전체 이름을 쓰는 것은
+     * {@code AiTaskPersistenceAdapter}와 같은 관용구입니다. 도메인 예외와 이름이 같아 짧게 쓸 수 없습니다.
      */
     @Override
     public User save(User user) {
         UserEntity entity = userMapper.toEntity(user);
-        UserEntity savedEntity = jpaUserRepository.save(entity);
-        return userMapper.toDomain(savedEntity);
+        try {
+            UserEntity savedEntity = jpaUserRepository.save(entity);
+            return userMapper.toDomain(savedEntity);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // 어댑터는 "DB가 무결성 이유로 거부했다"까지만 말합니다. 그것이 동시 최초 로그인 경합인지는
+            // 재조회에 성공해 봐야 알 수 있고, 그 판단은 호출자(UserDataSyncManager)의 몫입니다.
+            log.warn("[Integrity] 사용자 저장이 DB 무결성 제약에서 거부되었습니다.", e);
+            throw new DataIntegrityViolationException(
+                    ServerErrorCode.INTERNAL_SERVER_ERROR, e.getMostSpecificCause().getMessage());
+        }
     }
 
     /**
