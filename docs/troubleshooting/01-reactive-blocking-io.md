@@ -1,6 +1,7 @@
 # 1. 리액티브 파이프라인의 블로킹 I/O — 전 구간 스레드 격리
 
-> 요약 · [README — 1. WebFlux 이벤트 루프 블로킹](../../README.md#1-webflux-이벤트-루프-블로킹--전-구간-스레드-격리)
+> 요약 · [README — 1. Reactor 이벤트 루프 블로킹](../../README.md#1-reactor-이벤트-루프-블로킹--전-구간-스레드-격리)
+> 전제 · [서블릿 스택 위의 Reactor — 이 서버는 Tomcat에서 돈다](../architecture/servlet-and-reactor.md)
 > 근거 · [`AiGenerationService.java`](../../src/main/java/com/serverbe/application/service/AiGenerationService.java) · [`AiGenerationController.java`](../../src/main/java/com/serverbe/adapter/in/web/AiGenerationController.java) · [`WebClientConfig.java`](../../src/main/java/com/serverbe/infrastructure/config/WebClientConfig.java)
 
 ## 1. 상황 — 이 서버는 Semi-Reactive다
@@ -8,8 +9,10 @@
 먼저 전제를 정확히 해 둘 필요가 있습니다. 이 애플리케이션은 **순수 WebFlux 서버가 아닙니다.**
 
 `spring-boot-starter-web`과 `spring-boot-starter-webflux`가 함께 있으면 Spring Boot는 **서블릿 스택을
-선택**합니다. 실제로 기동 로그에는 `Tomcat started on port 8080`이 찍힙니다. `ServerBeApplication`의
-주석이 이 구조를 **Semi-Reactive**라고 부르는 것도 같은 뜻입니다.
+선택**합니다. 실제로 기동 로그에는 `Tomcat started on port 8080`이 찍히고, **Netty 서버는 뜨지 않습니다.**
+`ServerBeApplication`의 주석이 이 구조를 **Semi-Reactive**라고 부르는 것도 같은 뜻입니다.
+왜 그렇게 결정되는지, 컨트롤러가 반환하는 `Mono`가 서블릿 위에서 어떻게 처리되는지는
+[서블릿 스택 위의 Reactor](../architecture/servlet-and-reactor.md)에 따로 정리했습니다.
 
 - **인바운드 HTTP** — Tomcat 서블릿 스레드가 받습니다.
 - **아웃바운드 외부 호출** — 카카오·구글 OAuth, 카카오 지오코딩, Discord 웹훅은 `WebClient`를 쓰고,
@@ -22,7 +25,8 @@
 public Mono<ResponseEntity<RestApiResponse<String>>> initiateGeneration(...)
 ```
 
-AI 파이프라인은 **지오코딩 `WebClient` 호출로 시작**합니다. Reactor에서 연산자는 별도 지정이 없으면
+AI 파이프라인의 **첫 외부 호출이 지오코딩 `WebClient` 호출**입니다(그 앞의 Rate Limit 검증은 이미
+`boundedElastic`에 있습니다). Reactor에서 연산자는 별도 지정이 없으면
 **직전 신호를 방출한 스레드에서 이어 실행**됩니다. 즉 지오코딩 응답 이후의 모든 단계는 기본적으로
 `reactor-http-nio` 이벤트 루프 스레드 위에서 돕니다.
 
@@ -126,6 +130,10 @@ private final TransactionTemplate transactionTemplate;
 
 ## 6. 검증
 
+- **점유량 측정** — 이 판단이 실제로 워커를 덜 잡는지는 별도 하네스로 잽니다. 동기(`RestClient`)와
+  논블로킹(`WebClient`)이 같은 스텁을 같은 타임아웃으로 부르는 두 경로에 JMeter로 같은 부하를 흘리고,
+  `tomcat.threads.busy`를 Actuator에서 긁습니다. 측정 조건과 결과는
+  [측정 01 — 스레드 점유](../benchmark/01-thread-occupancy.md)에 있습니다.
 - **스레드 이름 확인** — 격리가 제대로 되면 블로킹 구간은 `boundedElastic-N`, 지오코딩 응답 처리는
   `reactor-http-nio-N`으로 찍힙니다. 블로킹 구간 로그에서 `reactor-http-nio-`가 보이면 그 지점이 빠진 것입니다.
 
@@ -149,7 +157,7 @@ private final TransactionTemplate transactionTemplate;
 - **BlockHound 도입** — 지금은 "빠뜨리지 않았는지"를 코드 리뷰로 확인합니다. 테스트 소스셋에만
   BlockHound를 붙이면 이벤트 루프 블로킹이 **테스트 실패로** 드러납니다. 새 블로킹 호출이 추가될 때
   자동으로 잡히는 안전망이 없다는 것이 현재 구조의 약점입니다.
-- **README 문구** — README 1번 항목은 이 문제를 "WebFlux 이벤트 루프"라고 표현하는데, 정확히는
-  **서블릿 스택 위에서 `WebClient`가 쓰는 Reactor Netty 이벤트 루프**입니다. 피해 반경도
-  "서버 전체의 모든 요청"이 아니라 **모든 아웃바운드 외부 API 호출**입니다. 문제의 심각성은 같지만
-  메커니즘이 다르므로, README 문구를 이 문서에 맞춰 정정하는 편이 정확합니다.
+- ~~**README 문구**~~ — README 1번 항목이 이 문제를 "WebFlux 이벤트 루프"라고 부르고 피해 반경을
+  "서버 전체의 모든 요청"이라고 적고 있던 것을 정정했습니다. 정확히는 **서블릿 스택 위에서 `WebClient`가
+  쓰는 Reactor Netty 이벤트 루프**이고, 피해 반경은 **모든 아웃바운드 외부 API 호출**입니다.
+  전제 자체는 [서블릿 스택 위의 Reactor](../architecture/servlet-and-reactor.md)로 분리했습니다.

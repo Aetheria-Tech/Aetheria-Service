@@ -54,3 +54,9 @@ out/
 
 ### QueryDSL (IDE 생성물 - Gradle 은 build/generated 를 사용) ###
 src/main/generated/
+
+### 부하 측정 결과물 (원본 CSV·HTML 리포트) ###
+# 요약 표와 그래프만 docs/benchmark/ 에 커밋한다. 원본은 회차마다 수십 MB 라 저장소에 넣지 않는다.
+perf/**/results/
+# JMeter 는 실행 디렉터리에 로그를 남긴다. 저장소 루트에서 돌리면 여기에 떨어진다.
+jmeter.log

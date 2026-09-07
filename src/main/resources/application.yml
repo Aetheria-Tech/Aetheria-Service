@@ -255,3 +255,15 @@ notification:
 
 task:
   task-timeout-threshold-minutes: 10
+
+
+# ===================================================================
+# 스레드 점유 측정(bench 프로파일) 전용 설정.
+# 상용 경로에는 영향이 없다 - BenchController 가 @Profile("bench") 뒤에 있다.
+# 값은 docker-compose.bench.yml 이 BENCH_STUB_URL / BENCH_STUB_PATH 로 덮어쓴다.
+# 측정 절차는 docs/benchmark/01-thread-occupancy.md 를 보라.
+# ===================================================================
+bench:
+  stub:
+    url: ${BENCH_STUB_URL:http://localhost:8090}
+    path: ${BENCH_STUB_PATH:/v2/local/search/address.json}

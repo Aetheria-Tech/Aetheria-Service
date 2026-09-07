@@ -184,6 +184,16 @@ private void cleanUpResourcesAfterCommit(AiTask task) {
 
 ## 6. 검증
 
+- **실제 큐·실제 락 위에서의 측정** — 아래 단위 테스트는 Mockito 스텁 위에서 돌기 때문에,
+  `SELECT ... FOR UPDATE`가 정말 직렬화하는지도 at-least-once 중복 전달이 정말 걸러지는지도
+  보여 주지 못합니다. 그 두 질문은 Testcontainers로 띄운 MySQL과 LocalStack SQS 위에서
+  [`SqsIdempotencyConsistencyTest`](../../src/test/java/com/serverbe/adapter/in/messaging/SqsIdempotencyConsistencyTest.java)
+  가 답합니다 — 20개 작업에 같은 알림을 5번씩 섞어 보내고, 큐가 빌 때까지 기다린 뒤 등록 건수를 셉니다.
+  조건과 결과는 [측정 02 — SQS 멱등성 정합성](../benchmark/02-sqs-idempotency-consistency.md).
+
+  ```powershell
+  .\gradlew integrationTest --tests "*SqsIdempotencyConsistencyTest"
+  ```
 - **단위 테스트** — [`AiNotificationServiceTest.java`](../../src/test/java/com/serverbe/application/service/AiNotificationServiceTest.java)
   가 `PENDING` 진입 시 `AsyncRaceConditionException`이 던져지는지, 종결 상태에서 결과 등록이
   호출되지 않고 자원 정리만 수행되는지를 검증합니다.

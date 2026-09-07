@@ -41,7 +41,8 @@ dependencies {
      */
     // Spring Web: RESTful API 개발을 위한 표준 MVC 프레임워크 (Tomcat 내장)
     implementation 'org.springframework.boot:spring-boot-starter-web'
-    // Spring WebFlux: 비동기 논블로킹(Non-blocking) 개발 및 WebClient 사용을 위함
+    // Spring WebFlux: 서버로 띄우지 않습니다 (starter-web 이 있으면 Spring Boot 는 서블릿 스택을 고릅니다).
+    // WebClient 와 Reactor 타입(Mono/Flux)을 쓰기 위한 의존성입니다. 근거: docs/architecture/servlet-and-reactor.md
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     // SpringDoc OpenAPI: Swagger UI를 통해 API 문서를 자동 생성하고 테스트 화면 제공
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.3'
@@ -93,7 +94,7 @@ dependencies {
     implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'org.springframework.boot:spring-boot-starter-aop'
     implementation 'com.github.ben-manes.caffeine:caffeine'
-    implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0' // WebFlux(Mono) 지원용
+    implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0' // Reactor(Mono) 체인에 CircuitBreakerOperator 를 붙이기 위함
 
     // Spring Actuator
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
@@ -112,7 +113,7 @@ dependencies {
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
     // Spring Boot Test: 통합 테스트를 위한 기본 환경 및 라이브러리(JUnit5, AssertJ 등) 제공
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    // Reactor Test: WebFlux의 Mono, Flux 비동기 스트림 테스트 지원
+    // Reactor Test: Reactor의 Mono, Flux 비동기 스트림 테스트 지원
     testImplementation 'io.projectreactor:reactor-test'
     // Security Test: Spring Security가 적용된 환경에서의 권한 기반 테스트 지원
     testImplementation 'org.springframework.security:spring-security-test'
@@ -120,6 +121,16 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     // ArchUnit: 헥사고날 경계 규칙을 테스트로 고정한다. 규약(package-info)만으로는 위반을 막지 못한다.
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
+
+    // Testcontainers: 중복 소비 방지(멱등성)를 **실제 MySQL 과 실제 SQS 로** 검증하기 위해 들어왔다.
+    // 그 전까지 멱등성 검증은 findByIdForUpdate 를 Mockito 로 스텁한 단위 테스트뿐이어서,
+    // SELECT ... FOR UPDATE 가 정말 직렬화하는지도, at-least-once 중복 전달이 정말 걸러지는지도
+    // 확인된 적이 없었다. 근거: docs/benchmark/02-sqs-idempotency-consistency.md
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:mysql'
+    testImplementation 'org.testcontainers:localstack'
+    // Awaitility: SQS 소비는 별도 폴링 스레드에서 일어나 완료 시점을 테스트가 알 수 없다.
+    testImplementation 'org.awaitility:awaitility'
 
     /**
      * AWS 인프라 연동

@@ -1,0 +1,72 @@
+%% 데이터베이스 ERD — 포트폴리오용 SVG의 원본.
+%%
+%% 스키마의 근거는 Flyway 마이그레이션(src/main/resources/db/migration/V1~V6)이며,
+%% Hibernate 는 ddl-auto: validate 로 검증만 합니다. 즉 이 그림의 출처는 엔티티가
+%% 아니라 마이그레이션 스크립트입니다.
+%%
+%% 실선(||--o{)은 물리 외래키가 있는 관계, 점선(..)은 애플리케이션이 지키는
+%% 논리적 참조입니다. ai_generation_tasks 는 users·running_arts 어느 쪽에도
+%% 외래키를 걸지 않습니다.
+%%
+%% 색은 렌더 시 themeVariables 로 주입합니다.
+%%
+%%   구분        라이트          다크
+%%   글자        #16213E         #F4F8FA
+%%   엔티티 헤더 #DFEAF2         #2F3E85
+%%   엔티티 테두리 #065A82       #63B4D1
+%%   행(홀수)    #FFFFFF         #1A2148
+%%   행(짝수)    #F1F6F9         #222B57
+%%   관계선      #1C7293         #9CC7DC
+%%
+%% 배경은 -b transparent, 라벨은 htmlLabels:false 로 뽑았습니다. mermaid 11 의 ER
+%% 렌더러가 행 배경색을 themeVariables 로 받지 않아, 렌더 후 CSS 규칙을 덧붙여
+%% .row-rect-odd / .row-rect-even 색을 고정했습니다.
+
+erDiagram
+    direction LR
+    users ||--o{ running_arts : "소유"
+    users ||..o{ ai_generation_tasks : "요청"
+    ai_generation_tasks |o..o| running_arts : "생성 결과"
+
+    users {
+        bigint id PK "AUTO_INCREMENT"
+        varchar(255) oauth_id UK "소셜 계정 자연키"
+        enum oauth_provider UK "GOOGLE, KAKAO"
+        varchar(255) email "AES-GCM 암호화 저장"
+        varchar(255) nickname "표시 이름"
+        enum role "USER, ADMIN"
+        varchar(255) status_message "nullable"
+        text oauth_refresh_token "AES-GCM 암호화 저장, nullable"
+        datetime created_at "DATETIME(6)"
+        datetime updated_at "DATETIME(6)"
+    }
+
+    running_arts {
+        bigint id PK "AUTO_INCREMENT"
+        bigint user_id FK "nullable, 물리 FK 있음"
+        varchar(255) title "사용자 지정 제목"
+        varchar(255) content "설명"
+        varchar(255) shape "생성 요청 키워드"
+        enum proficiency "INTRODUCTION, BEGINNER, SKILLED, EXPERT"
+        longtext gpx "경로 폴리라인, nullable"
+        double start_lat "반경 검색 기준점"
+        double start_lon "반경 검색 기준점"
+        double distance "총 거리"
+        datetime created_at "DATETIME(6)"
+        datetime updated_at "DATETIME(6)"
+    }
+
+    ai_generation_tasks {
+        varchar(36) id PK "UUID"
+        bigint user_id FK "물리 FK 없음"
+        bigint active_user_id UK "진행 중일 때만 값 · 1인 1작업 강제"
+        bigint result_art_id FK "물리 FK 없음, nullable"
+        varchar(255) shape "생성 요청 키워드"
+        enum proficiency "INTRODUCTION, BEGINNER, SKILLED, EXPERT"
+        enum status "PENDING, PROCESSING, COMPLETED, FAILED"
+        varchar(500) input_s3_uri "프롬프트 JSON, nullable"
+        varchar(500) output_s3_uri "추론 결과, nullable"
+        varchar(1000) error_message "실패 원인, nullable"
+        datetime created_at "DATETIME(6)"
+        datetime updated_at "DATETIME(6)"
+    }

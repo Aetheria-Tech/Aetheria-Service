@@ -1,0 +1,61 @@
+# 스레드 점유 측정 전용 오버레이. 단독으로 쓰지 않고 기본 스택 위에 겹친다.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.bench.yml up -d --build
+#
+# 하는 일은 둘이다.
+#   1. 고정 지연 500ms 로 응답하는 외부 API 스텁(WireMock)을 띄운다.
+#   2. 앱을 bench 프로파일로 띄우고, 벤치 엔드포인트와 **상용 지오코딩 엔드포인트가 모두**
+#      그 스텁을 향하게 한다. 상용 경로까지 같은 조건에 두는 이유는, 합성 엔드포인트만으로는
+#      "그건 네 벤치 코드지 앱이 아니지 않냐"는 반박을 받기 때문이다.
+#
+# 측정 절차와 지표 정의는 perf/README.md 와 docs/benchmark/01-thread-occupancy.md 에 있다.
+
+services:
+  wiremock:
+    image: wiremock/wiremock:3.9.1
+    container_name: aetheria-bench-stub
+    command:
+      - "--disable-banner"
+      # 부하 중 요청 기록을 쌓지 않는다. 켜 두면 스텁 쪽이 먼저 메모리로 죽는다.
+      - "--no-request-journal"
+      # 지연 응답을 컨테이너 스레드에 붙잡아 두지 않고 스케줄러로 넘긴다.
+      # 이게 꺼져 있으면 500ms 지연 하나가 Jetty 스레드 하나를 그대로 점유해,
+      # 동시 100 요청에서 스텁이 먼저 포화된다(실측 TPS 37 - 앱이 아니라 스텁의 한계였다).
+      - "--async-response-enabled"
+      # 동시 500 · 지연 500ms 의 이론 상한은 1000 TPS 다. 200/400 은 동시 100 을 기준으로 잡은
+      # 값이라 500 구간에서 스텁이 먼저 천장에 닿는다. 앱 쪽 조건(워커 200·타임아웃)은 그대로 두고
+      # 스텁의 여유만 올린다. 근거와 확인 절차는 docs/benchmark/01b-thread-occupancy-scale.md.
+      - "--async-response-threads"
+      - "500"
+      - "--container-threads"
+      - "1000"
+    ports:
+      # 호스트에서 스텁을 직접 찔러 지연을 확인할 때만 쓴다. 앱은 컴포즈 네트워크로 붙는다.
+      - "8090:8080"
+    volumes:
+      - ./perf/stub:/home/wiremock:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/__admin/mappings"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    environment:
+      # local: FakeS3/FakeSageMaker 대역으로 AWS 자격증명 없이 기동한다(기본 스택과 동일).
+      # bench: BenchController 를 노출한다.
+      SPRING_PROFILES_ACTIVE: local,bench
+      BENCH_STUB_URL: http://wiremock:8080
+      BENCH_STUB_PATH: /v2/local/search/address.json
+      # 상용 지오코딩 어댑터(KakaoGeocodeAdapter)도 같은 스텁을 보게 덮어쓴다.
+      # kakao.geocoding.dapi 에 대응하는 환경변수 이름이다.
+      KAKAO_GEOCODING_DAPI: http://wiremock:8080
+      # tomcat.threads.busy 는 Tomcat 의 MBean 레지스트리가 켜져 있어야 바인딩된다.
+      # 기본값(false)에서는 /actuator/metrics 에 tomcat.sessions.* 만 나오고 워커 점유는 보이지 않아,
+      # 샘플러가 빈 CSV 만 남긴다. 측정에만 필요한 설정이라 상용 설정이 아니라 이 오버레이에 둔다.
+      SERVER_TOMCAT_MBEANREGISTRY_ENABLED: "true"
+      # 톰캣 워커는 운영 기본값(200)을 그대로 둔다. 값을 줄이면 블로킹 쪽이 더 빨리 포화되어
+      # 차이가 커 보이는데, 그렇게 만든 숫자는 "설정을 골라 만든 것 아니냐"는 반박을 부른다.
+    depends_on:
+      wiremock:
+        condition: service_healthy
