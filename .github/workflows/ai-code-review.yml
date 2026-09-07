@@ -1,0 +1,54 @@
+name: Free AI Code Review (GitHub Models)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  models: read   # GitHub Models 호출에 필수
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        run: |
+          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > diff.txt
+          # 토큰 제한 대비 앞부분만 사용
+          head -c 12000 diff.txt > diff_trimmed.txt
+
+      - name: Call GitHub Models
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DIFF_CONTENT=$(jq -Rs . < diff_trimmed.txt)
+          curl -s "https://models.github.ai/inference/chat/completions" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -d "{
+              \"model\": \"openai/gpt-4o-mini\",
+              \"messages\": [
+                {\"role\": \"system\", \"content\": \"당신은 시니어 백엔드 개발자입니다. 주어진 git diff를 읽고 버그, 보안 취약점, 성능 이슈, 개선 제안을 한국어로 간결하게 정리하세요.\"},
+                {\"role\": \"user\", \"content\": $DIFF_CONTENT}
+              ]
+            }" | jq -r '.choices[0].message.content' > review.md
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('review.md', 'utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 🤖 AI 코드 리뷰 (GitHub Models)\n\n${review}`
+            });
